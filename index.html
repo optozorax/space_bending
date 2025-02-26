@@ -6,785 +6,642 @@
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { display: block; }
-    #stepButton {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      padding: 8px 16px;
-      font-size: 16px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
+    #startButton {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        padding: 8px 16px;
+        font-size: 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
     }
-    #stepButton:hover {
-      background-color: #45a049;
+    #startButton:hover {
+        background-color: #45a049;
+    }
+    #loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 24px;
+        color: white;
+        background-color: rgba(0, 0, 0, 0.7);
+        padding: 20px;
+        border-radius: 8px;
     }
   </style>
 </head>
 <body>
-<button id="stepButton">Step</button>
+<div id="loading">Loading WASM...</div>
+<button id="startButton">Start/Stop</button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<!-- <canvas id="canvas"></canvas> -->
   
-<script>
-// Vector3 utility class for 3D vector operations
-class Vector3 {
-  constructor(x, y, z) {
-    this.x = x || 0;
-    this.y = y || 0;
-    this.z = z || 0;
-  }
-  
-  add(v) {
-    return new Vector3(this.x + v.x, this.y + v.y, this.z + v.z);
-  }
-  
-  sub(v) {
-    return new Vector3(this.x - v.x, this.y - v.y, this.z - v.z);
-  }
-  
-  multiply(s) {
-    return new Vector3(this.x * s, this.y * s, this.z * s);
-  }
-  
-  dot(v) {
-    return this.x * v.x + this.y * v.y + this.z * v.z;
-  }
-  
-  cross(v) {
-    return new Vector3(
-      this.y * v.z - this.z * v.y,
-      this.z * v.x - this.x * v.z,
-      this.x * v.y - this.y * v.x
+<script type="module">
+import init, { MeshHandle } from './wasm/pkg/wasm.js';
+
+// Global variables
+let scene, camera, renderer, controls;
+let meshHandle; // WASM mesh handle
+let meshObject; // THREE.js object
+let positionAttribute; // Buffer attribute for positions
+let wasmMemory; // Reference to WASM memory
+let started = false;
+
+let size = 30;
+
+// Create a proxy object for the constants
+const constants = {
+    dt: 0.05,
+    edgeSpringConstant: 50,
+    dihedralSpringConstant: 35,
+    dampingCoefficient: 0.5,
+    globalDamping: 0.15,
+    edgeCoef: 10.0,
+    gravityCoef: 30.0,
+    iterations: 1
+};
+
+// Initialize everything
+async function init2(texture) {
+    try {
+        // Load WASM module
+        const wasmModule = await init('./wasm/pkg/wasm_bg.wasm');
+        wasmMemory = wasmModule.memory;
+        
+        // Hide loading screen
+        document.getElementById('loading').style.display = 'none';
+        
+        // Create scene
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        
+        // Create camera
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 1;
+        
+        // Create renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.AmbientLight(0xffffff, 1.0);
+        scene.add(light);
+        
+        // Create orbit controls
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+        
+        // Create the mesh in WASM
+        console.log("Creating mesh...");
+        meshHandle = new MeshHandle(size + 1);
+        createMeshObject(texture);
+
+        for (const name in constants) {
+          meshHandle.set_constant(name, constants[name]);
+        }
+        
+        // Set up GUI
+        setupGUI();
+        
+        // Add event listener for the step button
+        document.getElementById('startButton').addEventListener('click', () => {
+            started = !started;
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize);
+        
+        // Start animation loop
+        animate();
+        
+    } catch (error) {
+        console.error("Error initializing application:", error);
+        document.getElementById('loading').textContent = 
+            'Error loading WASM: ' + error.message;
+    }
+}
+
+// Declare a variable to hold the UV attribute
+let uvAttribute;
+
+function createMeshObject(texture) {
+    // Remove existing mesh object if any
+    if (meshObject) {
+        scene.remove(meshObject);
+    }
+    
+    // Create a new geometry and material
+    const geometry = new THREE.BufferGeometry();
+    // Create a custom shader material with texture support
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        baseTexture: { value: texture }, // Your existing texture
+        darknessFactor: { value: 0.5 }   // How much to darken at maximum angle
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        varying vec2 vUv;
+        
+        void main() {
+          // Pass the UV coordinates to the fragment shader
+          vUv = uv;
+          
+          // Pass the normal to the fragment shader
+          vNormal = normalize(normalMatrix * normal);
+          
+          // Calculate view position
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vViewPosition = -mvPosition.xyz;
+          
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D baseTexture;
+        uniform float darknessFactor;
+        
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        varying vec2 vUv;
+        
+        void main() {
+          // Sample the texture using UV coordinates
+          vec4 texColor = texture2D(baseTexture, vUv);
+          
+          // Normalize the view direction
+          vec3 viewDir = normalize(vViewPosition);
+          
+          // Calculate the dot product between normal and view direction
+          float dotNV = max(0.0, abs(dot(vNormal, viewDir)));
+          
+          // Calculate darkness based on the angle
+          float darkness = (1.0 - dotNV) * darknessFactor;
+          
+          // Apply darkness to the texture color
+          vec3 finalColor = texColor.rgb * (1.0 - darkness);
+          
+          gl_FragColor = vec4(finalColor, texColor.a);
+        }
+      `,
+      side: THREE.DoubleSide
+    });
+    
+    // Get triangle count from WASM
+    const triangleCount = meshHandle.get_triangle_count();
+    const vertexCount = triangleCount * 3; // 3 vertices per triangle
+    
+    // Create a view into the WASM memory for positions
+    const triangleDataPtr = meshHandle.get_triangle_buffer();
+    const triangleData = new Float32Array(
+        wasmMemory.buffer, 
+        triangleDataPtr, 
+        vertexCount * 3  // 3 coordinates per vertex
     );
-  }
-  
-  length() {
-    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
-  }
-  
-  normalize() {
-    const len = this.length();
-    if (len === 0) return new Vector3(0, 0, 0);
-    return new Vector3(this.x / len, this.y / len, this.z / len);
-  }
-  
-  clone() {
-    return new Vector3(this.x, this.y, this.z);
-  }
-}
-
-// Particle class for mass-spring system
-class Particle {
-  constructor(x, y, z) {
-    this.position = new Vector3(x, y, z);
-    this.velocity = new Vector3(0, 0, 0);
-    this.force = new Vector3(0, 0, 0);
-  }
-}
-
-// Edge spring for maintaining distances between particles
-class EdgeSpring {
-  constructor(i, j, restLength, edge=false) {
-    this.i = i; // Index of first particle
-    this.j = j; // Index of second particle
-    this.restLength = restLength;
-    this.edge = edge;
-  }
-}
-
-// Dihedral spring for resisting bending
-class DihedralSpring {
-  constructor(i1, i2, i3, i4, edge=false) {
-    this.i1 = i1; // First edge point
-    this.i2 = i2; // Second edge point
-    this.i3 = i3; // First wing point (from triangle 1)
-    this.i4 = i4; // Second wing point (from triangle 2)
-    this.edge = edge;
-  }
-}
-
-// Triangle for mesh representation
-class Triangle {
-  constructor(i, j, k) {
-    this.indices = [i, j, k]; // Indices of three particles
-  }
-}
-
-function dihedralSpring(p1, p2, p3, p4, k) {
-  // k is the stiffness constant
-
-  // 1. Hinge axis and midpoint.
-  const hinge = p2.sub(p1);
-  const axis = hinge.clone().normalize();
-  const mid = p1.add(p2).multiply(0.5);
-  
-  // 2. Compute wing vectors (from hinge midpoint) and project onto plane perpendicular to the hinge.
-  const v3 = p3.sub(mid);
-  const v4 = p4.sub(mid);
-  const v3_proj = v3.sub(axis.clone().multiply(v3.dot(axis)));
-  const v4_proj = v4.sub(axis.clone().multiply(v4.dot(axis)));
-  
-  // Avoid division by (almost) zero if either projection is too short.
-  if (v3_proj.length() < 1e-6 || v4_proj.length() < 1e-6) {
-    return [
-      new Vector3(0, 0, 0),
-      new Vector3(0, 0, 0),
-      new Vector3(0, 0, 0),
-      new Vector3(0, 0, 0)
-    ];
-  }
-  
-  // 3. When flat, v3_proj and v4_proj should be oppositely directed.
-  // Their sum (misalignment) is our measure of how far we are from 180°.
-  const misalignment = v3_proj.add(v4_proj);
-  
-  // 4. Compute force on each wing (p3 and p4) so that only the component perpendicular
-  //    to its own projection is applied (to cause a rotation rather than a translation).
-  //    That is, we remove the part of misalignment that is parallel to the wing’s projection.
-  function computeWingForce(v_proj) {
-    // Component of misalignment parallel to v_proj:
-    const parallel = v_proj.clone().multiply(v_proj.dot(misalignment) / (v_proj.length() ** 2));
-    // The perpendicular part is what we use to “rotate” the wing.
-    return misalignment.clone().sub(parallel).multiply(-k);
-  }
-  
-  const F3 = computeWingForce(v3_proj);
-  const F4 = computeWingForce(v4_proj);
-  
-  // 5. For momentum conservation, the reaction forces on the common edge are taken as the
-  //    negative of the sum of F3 and F4. Here we split that equally between p1 and p2.
-  const hingeForce = F3.add(F4).multiply(-0.5);
-  const F1 = hingeForce.clone();
-  const F2 = hingeForce.clone();
-  
-  // Return the forces [force on p1, force on p2, force on p3, force on p4].
-  return [F1, F2, F3, F4];
-}
-
-function calcForces(particles, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, gravityCoef) {
-  // Apply edge spring forces
-  for (let i = 0; i < edgeSprings.length; i++) {
-    const spring = edgeSprings[i];
-    const p1 = particles[spring.i];
-    const p2 = particles[spring.j];
     
-    const delta = p2.position.sub(p1.position);
-    const currentLength = delta.length();
-    
-    if (currentLength === 0) continue; // Avoid division by zero
-    
-    const direction = delta.multiply(1 / currentLength);
-    
-    // Calculate relative velocity along spring direction
-    const v1 = p1.velocity;
-    const v2 = p2.velocity;
-    const relativeVelocity = v2.sub(v1).dot(direction);
-    
-    // Spring force (Hooke's law with damping)
-    const springForce = edgeK * (currentLength - spring.restLength);
-    const dampingForce = damping * relativeVelocity;
-    let totalForce = springForce + dampingForce;
-
-    if (spring.edge) {
-      totalForce = totalForce * edgeCoef;
-    }
-    
-    const forceVector = direction.multiply(totalForce);
-    
-    p1.force = p1.force.add(forceVector);
-    p2.force = p2.force.sub(forceVector);
-  }
-
-  for (let i = 0; i < dihedralSprings.length; i++) {
-    const spring = dihedralSprings[i];
-    const p1 = particles[spring.i1]; // First edge point
-    const p2 = particles[spring.i2]; // Second edge point
-    const p3 = particles[spring.i3]; // First wing point
-    const p4 = particles[spring.i4]; // Second wing point
-
-    let [f1, f2, f3, f4] = dihedralSpring(p1.position, p2.position, p3.position, p4.position, dihedralK);
-
-    let toMul = 1.;
-    if (spring.edge) {
-      toMul = edgeCoef;
-    }
-
-    p1.force = p1.force.add(f1.multiply(toMul));
-    p2.force = p2.force.add(f2.multiply(toMul));
-    p3.force = p3.force.add(f3.multiply(toMul));
-    p4.force = p4.force.add(f4.multiply(toMul));
-  }
-
-  // for (let i = 0; i < particles.length; i++) {
-  //   for (let j = 0; j < i; j++) {
-  //     const p1 = particles[i];
-  //     const p2 = particles[j];
-  //     let dir = p1.position.sub(p2.position);
-  //     let dirLen = dir.length();
-  //     dir = dir.normalize().multiply(1. / (dirLen) * gravityCoef * 0.0001);
-  //     // dir = dir.normalize().multiply(gravityCoef * 0.001);
-  //     p1.force = p1.force.add(dir);
-  //     p2.force = p2.force.add(dir.multiply(-1.));
-  //   }
-  // }
-}
-
-// Main Mesh class
-class Mesh {
-  constructor() {
-    // Initialize data structures
-    this.particles = [];
-    this.edgeSprings = [];
-    this.dihedralSprings = [];
-    this.triangles = [];
-    
-    // Simulation constants
-    this.constants = {
-      dt: 0.1,                    // Time step
-      edgeSpringConstant: 10,    // Stiffness for edge springs
-      dihedralSpringConstant: 10, // Stiffness for bending resistance
-      dampingCoefficient: 0.5,     // Spring damping
-      globalDamping: 0.05,         // Velocity damping
-      edgeCoef: 1.0,
-      gravityCoef: 1.0
-    };
-  }
-  
-  // Initialize the mesh as a 2D sheet with size x size points
-  init(size) {
-    // Clear existing data
-    this.particles = [];
-    this.edgeSprings = [];
-    this.dihedralSprings = [];
-    this.triangles = [];
-    this.size = size;
-    
-    // Create particles in a grid
-    for (let i = 0; i < size; i++) {
-      for (let j = 0; j < size; j++) {
-        const x = i / (size - 1);
-        // const y = j / (size - 1) * 10.;
-        const y = j / (size - 1);
-        const z = 0; // Flat sheet in XY plane
-        this.particles.push(new Particle(x, y, z));
-      }
-    }
-    
-    // Helper function to get index from grid coordinates
-    const getIndex = (i, j) => i * size + j;
-    
-    // Create edge springs and triangles
-    for (let i = 0; i < size - 1; i++) {
-      for (let j = 0; j < size - 1; j++) {
-        const idx00 = getIndex(i, j);
-        const idx01 = getIndex(i, j + 1);
-        const idx10 = getIndex(i + 1, j);
-        const idx11 = getIndex(i + 1, j + 1);
-        
-        // Get positions
-        const p00 = this.particles[idx00].position;
-        const p01 = this.particles[idx01].position;
-        const p10 = this.particles[idx10].position;
-        const p11 = this.particles[idx11].position;
-        
-        // Create horizontal edge springs
-        const restLengthH = p01.sub(p00).length();
-        this.edgeSprings.push(new EdgeSpring(idx00, idx01, restLengthH));
-        
-        // Create vertical edge springs
-        const restLengthV = p10.sub(p00).length();
-        this.edgeSprings.push(new EdgeSpring(idx00, idx10, restLengthV));
-        
-        // Bottom edge springs (for last row/column)
-        if (i === size - 2) {
-          const restLengthBottom = p11.sub(p10).length();
-          this.edgeSprings.push(new EdgeSpring(idx10, idx11, restLengthBottom));
-        }
-        
-        if (j === size - 2) {
-          const restLengthRight = p11.sub(p01).length();
-          this.edgeSprings.push(new EdgeSpring(idx01, idx11, restLengthRight));
-        }
-        
-        // Create diagonal springs (for stability)
-        const restLengthD1 = p11.sub(p00).length();
-        this.edgeSprings.push(new EdgeSpring(idx00, idx11, restLengthD1));
-        
-        const restLengthD2 = p10.sub(p01).length();
-        this.edgeSprings.push(new EdgeSpring(idx01, idx10, restLengthD2));
-        
-        // Create triangles
-        this.triangles.push(new Triangle(idx00, idx01, idx10));
-        this.triangles.push(new Triangle(idx01, idx11, idx10));
-      }
-    }
-    
-    // Create dihedral springs for internal edges
-    // Map to track edges and their adjacent triangles
-    const edgeToTriangles = new Map();
-    
-    // Helper function to create a unique key for an edge
-    const getEdgeKey = (i, j) => i < j ? `${i}-${j}` : `${j}-${i}`;
-    
-    // Register all triangle edges
-    for (let t = 0; t < this.triangles.length; t++) {
-      const triangle = this.triangles[t];
-      
-      // For each edge in the triangle
-      for (let e = 0; e < 3; e++) {
-        const i = triangle.indices[e];
-        const j = triangle.indices[(e + 1) % 3];
-        const edgeKey = getEdgeKey(i, j);
-        
-        // Find the non-edge vertex of this triangle
-        const k = triangle.indices[(e + 2) % 3];
-        
-        if (!edgeToTriangles.has(edgeKey)) {
-          edgeToTriangles.set(edgeKey, { triangles: [], vertices: [] });
-        }
-        
-        const entry = edgeToTriangles.get(edgeKey);
-        entry.triangles.push(t);
-        entry.vertices.push(k);
-      }
-    }
-    
-    // Create dihedral springs for edges shared by two triangles
-    for (const [edgeKey, entry] of edgeToTriangles.entries()) {
-      if (entry.triangles.length === 2) {
-        // This edge is shared by two triangles - create a dihedral spring
-        const [i, j] = edgeKey.split('-').map(Number);
-        const [v1, v2] = entry.vertices;
-        
-        this.dihedralSprings.push(new DihedralSpring(i, j, v1, v2));
-      }
-    }
-
-    for (let i = 0; i < size; i++) {
-      this.particles[i].position.z += 0.1;
-    }
-
-    // this.edgeSprings.push(new EdgeSpring(getIndex(0, 0), getIndex(size-1, size-1), 0.0, true));
-    // this.edgeSprings.push(new EdgeSpring(getIndex(0, size-1), getIndex(size-1, 0), 0.0, true));
-    // this.edgeSprings.push(new EdgeSpring(getIndex(0, 0), getIndex(0, size-1), 0.0, true));
-    // this.edgeSprings.push(new EdgeSpring(getIndex(size-1, size-1), getIndex(size-1, 0), 0.0, true));
-
-    let blueX = size * 0.2;
-    let orangeX = size * 0.8;
-    let startY = size * 0.4;
-    let endY = size * 0.6;
-    for (let i = startY; i <= endY; i++) {
-      this.edgeSprings.push(new EdgeSpring(getIndex(blueX, i), getIndex(orangeX, endY+startY - i), 0.0, true));
-    }
-    for (let i = startY; i <= endY - 1; i++) {
-      this.dihedralSprings.push(new DihedralSpring(
-        getIndex(blueX, i),
-        getIndex(blueX, i+1),
-        getIndex(blueX+1, i+1),
-        getIndex(orangeX-1, endY+startY - i),
-        true
-      ));
-      this.dihedralSprings.push(new DihedralSpring(
-        getIndex(blueX, i),
-        getIndex(blueX, i+1),
-        getIndex(blueX-1, i+1),
-        getIndex(orangeX+1, endY+startY - i),
-        true
-      ));
-    }
-
-    // for (let i = 0; i < size; i++) {
-    //   this.edgeSprings.push(new EdgeSpring(getIndex(0, i), getIndex(size-1, i), 0.0, true));
-    //   this.edgeSprings.push(new EdgeSpring(getIndex(i, 0), getIndex(i, size-1), 0.0, true));
-    // }
-    // for (let i = 0; i < size - 1; i++) {
-    //   this.dihedralSprings.push(new DihedralSpring(
-    //     getIndex(0, i),
-    //     getIndex(0, i+1),
-    //     getIndex(1, i+1),
-    //     getIndex(size-2, i),
-    //     true
-    //   ));
-    //   this.dihedralSprings.push(new DihedralSpring(
-    //     getIndex(i, 0),
-    //     getIndex(i+1, 0),
-    //     getIndex(i+1, 1),
-    //     getIndex(i, size-2),
-    //     true
-    //   ));
-    // }
-  }
-  
-  // Perform one simulation step
-  step() {
-    const dt = this.constants.dt;
-    const edgeK = this.constants.edgeSpringConstant;
-    const dihedralK = this.constants.dihedralSpringConstant;
-    const damping = this.constants.dampingCoefficient;
-    const globalDamping = this.constants.globalDamping;
-    const edgeCoef = this.constants.edgeCoef;
-    const gravityCoef = this.constants.gravityCoef;
-    
-    // For each iteration (multiple iterations improve stability)
-    this.integrateRK4(
-      this.particles, 
-      dt, 
-      calcForces, 
-      this.edgeSprings, 
-      this.dihedralSprings, 
-      edgeK, 
-      dihedralK, 
-      damping, 
-      edgeCoef, 
-      globalDamping,
-      gravityCoef
+    // Get UV coordinates from WASM
+    const uvDataPtr = meshHandle.get_uv_buffer();
+    const uvData = new Float32Array(
+        wasmMemory.buffer,
+        uvDataPtr,
+        vertexCount * 2  // 2 coordinates (u, v) per vertex
     );
-
-    return true;
-  }
-
-  // Runge-Kutta 4 integration for the particle system
-  integrateRK4(particles, dt, calcForces, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, globalDamping, gravityCoef) {
-    // Store original state to return to after evaluations
-    const originalStates = particles.map(p => ({
-      position: p.position.clone(),
-      velocity: p.velocity.clone()
-    }));
     
-    // Arrays to store the 4 evaluations (k1, k2, k3, k4)
-    const k1 = new Array(particles.length);
-    const k2 = new Array(particles.length);
-    const k3 = new Array(particles.length);
-    const k4 = new Array(particles.length);
+    // Important! We need to copy the data since the WASM memory may move
+    // if it gets resized
+    const triangleDataCopy = new Float32Array(triangleData);
+    const uvDataCopy = new Float32Array(uvData);
     
-    // STEP 1: First evaluation (k1) at the current state
-    this.evaluateDerivatives(particles, k1, calcForces, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, globalDamping, gravityCoef);
+    // Create and store the position attribute
+    positionAttribute = new THREE.BufferAttribute(triangleDataCopy, 3);
+    geometry.setAttribute('position', positionAttribute);
     
-    // STEP 2: Second evaluation (k2) at t + dt/2 using k1
-    this.applyDerivativesHalfStep(particles, k1, dt/2, originalStates);
-    this.evaluateDerivatives(particles, k2, calcForces, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, globalDamping, gravityCoef);
+    // Create and store the UV attribute
+    uvAttribute = new THREE.BufferAttribute(uvDataCopy, 2);
+    geometry.setAttribute('uv', uvAttribute);
     
-    // STEP 3: Third evaluation (k3) at t + dt/2 using k2
-    this.restoreOriginalState(particles, originalStates);
-    this.applyDerivativesHalfStep(particles, k2, dt/2, originalStates);
-    this.evaluateDerivatives(particles, k3, calcForces, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, globalDamping, gravityCoef);
+    // Compute normals for proper lighting
+    geometry.computeVertexNormals();
     
-    // STEP 4: Fourth evaluation (k4) at t + dt using k3
-    this.restoreOriginalState(particles, originalStates);
-    this.applyDerivativesFullStep(particles, k3, dt, originalStates);
-    this.evaluateDerivatives(particles, k4, calcForces, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, globalDamping, gravityCoef);
-    
-    // Restore to original state before final update
-    this.restoreOriginalState(particles, originalStates);
-    
-    // STEP 5: Combine the derivatives with the RK4 weights (1/6, 2/6, 2/6, 1/6)
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      
-      // Update position: x(t+dt) = x(t) + dt/6 * (k1p + 2*k2p + 2*k3p + k4p)
-      const positionChange = k1[i].positionDerivative.multiply(1)
-        .add(k2[i].positionDerivative.multiply(2))
-        .add(k3[i].positionDerivative.multiply(2))
-        .add(k4[i].positionDerivative.multiply(1))
-        .multiply(dt/6);
-      
-      // Update velocity: v(t+dt) = v(t) + dt/6 * (k1v + 2*k2v + 2*k3v + k4v)
-      const velocityChange = k1[i].velocityDerivative.multiply(1)
-        .add(k2[i].velocityDerivative.multiply(2))
-        .add(k3[i].velocityDerivative.multiply(2))
-        .add(k4[i].velocityDerivative.multiply(1))
-        .multiply(dt/6);
-      
-      p.position = p.position.add(positionChange);
-      p.velocity = p.velocity.add(velocityChange);
-    }
-  }
-
-  // Evaluates the derivatives (velocities and accelerations) at the current state
-  evaluateDerivatives(particles, derivatives, calcForces, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, globalDamping, gravityCoef) {
-    // Clear forces
-    for (let i = 0; i < particles.length; i++) {
-      particles[i].force = new Vector3(0, 0, 0);
-    }
-    
-    // Calculate forces based on current state
-    calcForces(particles, edgeSprings, dihedralSprings, edgeK, dihedralK, damping, edgeCoef, gravityCoef);
-    
-    // Store derivatives for each particle
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      
-      // Apply global damping to force
-      const dampedForce = p.force.sub(p.velocity.multiply(globalDamping));
-      
-      // Store derivatives
-      derivatives[i] = {
-        positionDerivative: p.velocity.clone(), // dx/dt = v
-        velocityDerivative: dampedForce.clone() // dv/dt = a = F/m (assuming mass = 1)
-      };
-    }
-  }
-
-  // Applies half-step changes to particles based on derivatives
-  applyDerivativesHalfStep(particles, derivatives, halfDt, originalStates) {
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      const original = originalStates[i];
-      
-      // Apply half step: x = x0 + k*dt/2
-      p.position = original.position.add(derivatives[i].positionDerivative.multiply(halfDt));
-      p.velocity = original.velocity.add(derivatives[i].velocityDerivative.multiply(halfDt));
-    }
-  }
-
-  // Applies full-step changes to particles based on derivatives
-  applyDerivativesFullStep(particles, derivatives, dt, originalStates) {
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      const original = originalStates[i];
-      
-      // Apply full step: x = x0 + k*dt
-      p.position = original.position.add(derivatives[i].positionDerivative.multiply(dt));
-      p.velocity = original.velocity.add(derivatives[i].velocityDerivative.multiply(dt));
-    }
-  }
-
-  // Restores particles to their original state (before the current RK4 step)
-  restoreOriginalState(particles, originalStates) {
-    for (let i = 0; i < particles.length; i++) {
-      particles[i].position = originalStates[i].position.clone();
-      particles[i].velocity = originalStates[i].velocity.clone();
-    }
-  }
-  
-  // Get all constants for tweaking
-  getConstants() {
-    return { ...this.constants };
-  }
-  
-  // Set a specific constant
-  setConstant(name, value) {
-    if (name in this.constants) {
-      this.constants[name] = value;
-    }
-  }
-  
-  // Get triangle positions for rendering
-  getTriangles() {
-    let avg = new Vector3();
-    for (let i = 0; i < this.particles.length; i++) {
-        avg = avg.add(this.particles[i].position);
-    }
-    avg = avg.multiply(1./this.particles.length);
-
-    const trianglePositions = [];
-    
-    for (let i = 0; i < this.triangles.length; i++) {
-      const t = this.triangles[i];
-      const positions = [];
-      
-      for (let j = 0; j < 3; j++) {
-        const p = this.particles[t.indices[j]].position.sub(avg);
-        positions.push([p.x, p.y, p.z]); // Array format for three.js
-      }
-      
-      trianglePositions.push(positions);
-    }
-    
-    return trianglePositions;
-  }
-}
-
-// Initialize the scene, camera, renderer, and controls
-let scene, camera, renderer, controls, mesh;
-let meshObject; // three.js object that will display our mesh
-let positionAttribute; // Store the position attribute for updates
-
-function init() {
-  // Create scene
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111111);
-
-  // Create camera
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 3;
-
-  // Create renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  // Add lights
-  const ambientLight = new THREE.AmbientLight(0x404040);
-  scene.add(ambientLight);
-
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(1, 1, 1);
-  scene.add(directionalLight);
-
-  const directionalLight2 = new THREE.DirectionalLight(0xff0000, 0.8);
-  directionalLight2.position.set(-1, -1, 1);
-  scene.add(directionalLight2);
-
-  // Create orbit controls
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.25;
-
-  // Create our mesh
-  mesh = new Mesh();
-  mesh.init(50);
-  createMeshObject();
-
-  // Set up GUI
-  setupGUI();
-
-  // Add event listener for the step button
-  document.getElementById('stepButton').addEventListener('click', () => {
-    if (mesh.step()) {
-      updateMeshObject();
-    }
-  });
-
-  // Handle window resize
-  window.addEventListener('resize', onWindowResize);
-
-  // Start animation loop
-  animate();
-}
-
-function createMeshObject() {
-  // Remove existing mesh object if any
-  if (meshObject) {
-    scene.remove(meshObject);
-  }
-
-  // Create a new geometry and material
-  const geometry = new THREE.BufferGeometry();
-  const material = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
-    side: THREE.DoubleSide
-  });
-
-  // Get triangles from our mesh
-  const triangles = mesh.getTriangles();
-
-  // Calculate the total number of vertices
-  const vertexCount = triangles.length * 3;
-  
-  // Create position buffer with fixed size based on triangle count
-  const positionBuffer = new Float32Array(vertexCount * 3);
-  
-  // Fill the buffer with initial positions
-  updateVertexPositions(positionBuffer, triangles);
-  
-  // Create and store the position attribute
-  positionAttribute = new THREE.BufferAttribute(positionBuffer, 3);
-  geometry.setAttribute('position', positionAttribute);
-
-  // Compute normals for proper lighting
-  geometry.computeVertexNormals();
-
-  // Create the mesh object and add it to the scene
-  meshObject = new THREE.Mesh(geometry, material);
-  scene.add(meshObject);
-}
-
-// Separate function to update vertex positions in the existing buffer
-function updateVertexPositions(buffer, triangles) {
-  let offset = 0;
-  for (let i = 0; i < triangles.length; i++) {
-    const triangle = triangles[i];
-    for (let j = 0; j < 3; j++) {
-      const point = triangle[j];
-      buffer[offset++] = point[0];
-      buffer[offset++] = point[1];
-      buffer[offset++] = point[2];
-    }
-  }
-  return buffer;
+    // Create the mesh object and add it to the scene
+    meshObject = new THREE.Mesh(geometry, material);
+    scene.add(meshObject);
 }
 
 function updateMeshObject() {
-  // Get triangles from our mesh
-  const triangles = mesh.getTriangles();
-  
-  // Update the existing buffer with new positions
-  updateVertexPositions(positionAttribute.array, triangles);
-  
-  // Mark the attribute as needing an update
-  positionAttribute.needsUpdate = true;
-  
-  // Compute normals for proper lighting
-  meshObject.geometry.computeVertexNormals();
+    try {
+        // Get the latest triangle data from WASM
+        const triangleCount = meshHandle.get_triangle_count();
+        const vertexCount = triangleCount * 3;
+        const triangleDataPtr = meshHandle.get_triangle_buffer();
+        
+        // Create a new view into WASM memory for positions
+        const triangleData = new Float32Array(
+            wasmMemory.buffer, 
+            triangleDataPtr, 
+            vertexCount * 3
+        );
+        
+        // Get latest UV data
+        const uvDataPtr = meshHandle.get_uv_buffer();
+        const uvData = new Float32Array(
+            wasmMemory.buffer,
+            uvDataPtr,
+            vertexCount * 2
+        );
+        
+        // Update the position attribute with new data
+        for (let i = 0; i < triangleData.length; i++) {
+            positionAttribute.array[i] = triangleData[i];
+        }
+        
+        // Update the UV attribute
+        for (let i = 0; i < uvData.length; i++) {
+            uvAttribute.array[i] = uvData[i];
+        }
+        
+        // Mark the attributes as needing an update
+        positionAttribute.needsUpdate = true;
+        uvAttribute.needsUpdate = true;
+        
+        // Update the texture if canvas has changed
+        texture.needsUpdate = true;
+        
+        // Compute normals for proper lighting
+        meshObject.geometry.computeVertexNormals();
+    } catch (error) {
+        console.error("Error updating mesh:", error);
+    }
 }
 
 function setupGUI() {
-  const gui = new dat.GUI();
-  const constants = mesh.getConstants();
-
-  // Add controls for each constant
-  for (const name in constants) {
-    const value = constants[name];
+    const gui = new dat.GUI();
     
-    // Different control based on value type
-    if (typeof value === 'boolean') {
-      gui.add(constants, name).onChange(value => {
-        mesh.setConstant(name, value);
-        updateMeshObject();
-      });
-    } else if (typeof value === 'number') {
-      // Different ranges based on parameter
-      let min, max, step;
-      
-      if (name === 'iterations') {
-        min = 1;
-        max = 10;
-        step = 1;
-      } else if (name === 'edgeSpringConstant' || name === 'dihedralSpringConstant') {
-        min = 0;
-        max = 30;
-        step = 0.1;
-      } else if (name === 'edgeCoef' || name === 'gravityCoef') {
-        min = 0;
-        max = 5;
-        step = 0.1;
-      } else {
-        min = 0;
-        max = 1;
-        step = 0.01;
-      }
-      
-      gui.add(constants, name, min, max, step).onChange(value => {
-        mesh.setConstant(name, value);
-        updateMeshObject();
-      });
+    // Add controls for each constant
+    for (const name in constants) {
+        const value = constants[name];
+        
+        // Different ranges based on parameter
+        let min, max, step;
+        
+        if (name === "iterations") {
+            min = 1;
+            max = 10;
+            step = 1;
+        } else if (name === 'edgeSpringConstant' || name === 'dihedralSpringConstant') {
+            min = 0;
+            max = 100;
+            step = 0.1;
+        } else if (name === 'edgeCoef' || name === 'gravityCoef') {
+            min = 0;
+            max = 30;
+            step = 0.1;
+        } else {
+            min = 0;
+            max = 1;
+            step = 0.01;
+        }
+        
+        gui.add(constants, name, min, max, step).onChange(value => {
+            if (name != "iterations") {
+                // Forward the change to WASM
+                meshHandle.set_constant(name, value);
+            }
+        });
     }
-  }
 }
 
 function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function animate() {
-  requestAnimationFrame(animate);
-  controls.update();
-  renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+    
+    try {
+        if (started) {
+            // Step the physics simulation in WASM
+            for (let i = 0; i < constants.iterations; i++) {
+                meshHandle.step();
+            }
+            updateMeshObject();
+        }
+        
+        // Update controls and render
+        controls.update();
+        renderer.render(scene, camera);
+    } catch (error) {
+        console.error("Error in animation loop:", error);
+    }
+}
 
-  if (mesh.step()) {
-    updateMeshObject();
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+// TextureCreator class for creating and manipulating textures for three.js
+class TextureCreator {
+  constructor() {
+    this.canvas = null;
+    this.ctx = null;
+    this.width = 0;
+    this.height = 0;
+    this.imageData = null;
+  }
+
+  /**
+   * Initialize texture with specific dimensions
+   * @param {number} w - Width of the texture
+   * @param {number} h - Height of the texture
+   */
+  init(w, h) {
+    this.width = w;
+    this.height = h;
+    
+    // Create canvas if it doesn't exist
+    if (!this.canvas) {
+      this.canvas = document.createElement('canvas');
+      // this.canvas = document.getElementById('canvas');
+    }
+    
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.ctx = this.canvas.getContext('2d');
+    
+    // Clear canvas
+    this.ctx.clearRect(0, 0, w, h);
+    
+    // Create initial imageData
+    this.imageData = this.ctx.getImageData(0, 0, w, h);
+  }
+
+  /**
+   * Draw on the texture using a function that returns RGBA values
+   * @param {Function} func - Function that takes (x, y) and returns [r, g, b, a]
+   */
+  draw(func) {
+    const data = this.imageData.data;
+    
+    // 2x2 subpixel grid offsets for antialiasing
+    const subpixelOffsets = [
+      [0.25, 0.25], // top-left
+      [0.75, 0.25], // top-right
+      [0.25, 0.75], // bottom-left
+      [0.75, 0.75]  // bottom-right
+    ];
+    
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        // Calculate index in the image data array
+        const idx = (y * this.width + x) * 4;
+        
+        // Sample 4 subpixels and average them
+        let sumR = 0, sumG = 0, sumB = 0, sumA = 0;
+        
+        for (const [offX, offY] of subpixelOffsets) {
+          // Normalize coordinates to 0-1 range with subpixel offset
+          const nx = (x + offX) / this.width;
+          const ny = (y + offY) / this.height;
+          
+          // Get rgba values from the function (0-255 range)
+          const [r, g, b, a] = func(nx, ny);
+          
+          // Convert alpha to 0-1 range
+          const alpha = a / 255;
+          
+          // Accumulate values (premultiplied by alpha)
+          sumR += r * alpha;
+          sumG += g * alpha;
+          sumB += b * alpha;
+          sumA += alpha;
+        }
+        
+        // Average the accumulated values
+        sumR /= 4;
+        sumG /= 4;
+        sumB /= 4;
+        sumA /= 4;
+        
+        // Get current pixel values
+        const dstR = data[idx];
+        const dstG = data[idx + 1];
+        const dstB = data[idx + 2];
+        const dstA = data[idx + 3] / 255;
+        
+        // Apply standard alpha blending
+        const outA = sumA + dstA * (1 - sumA);
+        
+        if (outA > 0) {
+          data[idx] = (sumR + dstR * dstA * (1 - sumA)) / outA;
+          data[idx + 1] = (sumG + dstG * dstA * (1 - sumA)) / outA;
+          data[idx + 2] = (sumB + dstB * dstA * (1 - sumA)) / outA;
+        } else {
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+        }
+        
+        data[idx + 3] = Math.round(outA * 255);
+      }
+    }
+    
+    // Put the modified image data back to the canvas
+    this.ctx.putImageData(this.imageData, 0, 0);
+  }
+
+  /**
+   * Return the texture in a format compatible with three.js
+   * @returns {THREE.Texture} - three.js texture
+   */
+  getTexture() {
+    const texture = new THREE.CanvasTexture(this.canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  /**
+   * Draw a circle at specified position with given radius and color
+   * @param {number} cx - Center x-coordinate (0-1)
+   * @param {number} cy - Center y-coordinate (0-1)
+   * @param {number} radius - Radius (0-1)
+   * @param {Array} color - [r, g, b, a] color values (0-255)
+   */
+  drawCircle(cx, cy, radius, color) {
+    this.draw((x, y) => {
+      // Calculate distance from center
+      const dx = x - cx;
+      const dy = y - cy;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // If inside circle, return the color
+      if (distance <= radius) {
+        return color;
+      }
+      
+      // Otherwise, return transparent
+      return [0, 0, 0, 0];
+    });
+  }
+
+  /**
+   * Draw a line between two points with specified thickness
+   * @param {number} x1 - Start x-coordinate (0-1)
+   * @param {number} y1 - Start y-coordinate (0-1)
+   * @param {number} x2 - End x-coordinate (0-1)
+   * @param {number} y2 - End y-coordinate (0-1)
+   * @param {number} thickness - Line thickness (0-1)
+   * @param {Array} color - [r, g, b, a] color values (0-255)
+   */
+  drawLine(x1, y1, x2, y2, thickness, color) {
+    this.draw((x, y) => {
+      // Line SDF (Signed Distance Function)
+      // Calculate distance from point to line segment
+      const a = { x: x1, y: y1 };
+      const b = { x: x2, y: y2 };
+      const p = { x, y };
+      
+      const ab = { x: b.x - a.x, y: b.y - a.y };
+      const ap = { x: p.x - a.x, y: p.y - a.y };
+      
+      const lenSq = ab.x * ab.x + ab.y * ab.y;
+      const dot = ap.x * ab.x + ap.y * ab.y;
+      let t = Math.max(0, Math.min(1, dot / lenSq));
+      
+      const closest = {
+        x: a.x + ab.x * t,
+        y: a.y + ab.y * t
+      };
+      
+      const dx = x - closest.x;
+      const dy = y - closest.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // If inside the line (distance less than half the thickness)
+      if (distance <= thickness / 2) {
+        return color;
+      }
+      
+      // Otherwise, return transparent
+      return [0, 0, 0, 0];
+    });
+  }
+
+  /**
+   * Draw a rotated square at specified position with given side size and rotation
+   * @param {number} cx - Center x-coordinate (0-1)
+   * @param {number} cy - Center y-coordinate (0-1)
+   * @param {number} size - Side size (0-1)
+   * @param {number} angle - Rotation angle in radians
+   * @param {Array} color - [r, g, b, a] color values (0-255)
+   */
+  drawRotatedSquare(cx, cy, size, angle, color, discard) {
+    this.draw((x, y) => {
+      if (discard(x, y)) return [0, 0, 0, 0];
+
+      // Translate to origin
+      const dx = x - cx;
+      const dy = y - cy;
+      
+      // Rotate
+      const cos = Math.cos(-angle);
+      const sin = Math.sin(-angle);
+      const rx = dx * cos - dy * sin;
+      const ry = dx * sin + dy * cos;
+      
+      // Half size for easier calculation
+      const halfSize = size / 2;
+      
+      // If inside square
+      if (Math.abs(rx) <= halfSize && Math.abs(ry) <= halfSize) {
+        return color;
+      }
+      
+      // Otherwise, return transparent
+      return [0, 0, 0, 0];
+    });
+  }
+
+  /**
+   * Draw an infinite checkerboard pattern
+   * @param {number} tileSize - Size of each tile (0-1)
+   * @param {Array} color1 - First color [r, g, b, a] (0-255)
+   * @param {Array} color2 - Second color [r, g, b, a] (0-255)
+   */
+  drawCheckerboard(tileSize, color1, color2) {
+    this.draw((x, y) => {
+      // Scale coordinates to create tiles of the specified size
+      const tiledX = Math.floor(x / tileSize);
+      const tiledY = Math.floor(y / tileSize);
+      
+      // Determine if this tile should be color1 or color2
+      const isEven = (tiledX + tiledY) % 2 === 0;
+      
+      return isEven ? color1 : color2;
+    });
   }
 }
 
+let blueX = 0.2;
+let orangeX = 0.8;
+let startY = 0.4;
+let endY = 0.6;
+
+let thickness = 0.005;
+
+let noDiscard = (x, y) => { return false; };
+let discardBlueLeft = (x, y) => { return x > blueX; };
+let discardBlueRight = (x, y) => { return x < blueX; };
+let discardOrangeLeft = (x, y) => { return x > orangeX; };
+let discardOrangeRight = (x, y) => { return x < orangeX; };
+
+// Usage example:
+// Create and initialize texture
+const textureCreator = new TextureCreator();
+textureCreator.init(1024, 1024);
+
+textureCreator.drawCheckerboard(0.1, [255, 255, 255, 255], [255, 255, 255, 255]);
+// textureCreator.drawCheckerboard(0.1, [255, 255, 255, 20], [0, 0, 0, 20]);
+textureCreator.drawCheckerboard(1. / size, [255, 255, 255, 40], [0, 0, 0, 40]);
+
+// textureCreator.drawRotatedSquare(0.4, 0.1, 0.2, 0.2, [0, 0, 0, 192], noDiscard);
+// textureCreator.drawLine(0.1, 0.9, 0.9, 0.7, 0.05, [255, 128, 255, 192]);
+
+let sq1Size = 0.1;
+let sq1Angle = Math.PI/4;
+let sq1Color = [0, 255, 0, 192];
+textureCreator.drawRotatedSquare(blueX, (startY + endY) / 2., sq1Size, sq1Angle, sq1Color, discardBlueLeft);
+textureCreator.drawRotatedSquare(orangeX, (startY + endY) / 2., sq1Size, sq1Angle, sq1Color, discardOrangeRight);
+
+let sq2Size = 0.09;
+let sq2Angle = Math.PI/3;
+let sq2Color = [128, 128, 255, 192];
+textureCreator.drawRotatedSquare(blueX-0.02, (startY + endY) / 2. + 0.01, sq2Size, sq2Angle, sq2Color, discardBlueRight);
+textureCreator.drawRotatedSquare(orangeX-0.02, (startY + endY) / 2. + 0.01, sq2Size, sq2Angle, sq2Color, discardOrangeLeft);
+
+let blue = [9, 164, 201, 255];
+textureCreator.drawCircle(blueX, startY, thickness * 1.5, blue);
+textureCreator.drawCircle(blueX, endY, thickness * 1.5, blue);
+textureCreator.drawLine(blueX, startY, blueX, endY, thickness, blue);
+
+let orange = [237, 108, 13, 255];
+textureCreator.drawCircle(orangeX, startY, thickness * 1.5, orange);
+textureCreator.drawCircle(orangeX, endY, thickness * 1.5, orange);
+textureCreator.drawLine(orangeX, startY, orangeX, endY, thickness, orange);
+
+const texture = textureCreator.getTexture();
+
 // Start the application
-init();
+init2(texture).catch(console.error);
 </script>
 </body>
 </html>
