@@ -1,20 +1,26 @@
 use std::ops::{Add, Mul, Sub};
 use wasm_bindgen::prelude::*;
 
-// ============= Vector3 Implementation =============
+#[allow(non_camel_case_types)]
+pub type fxx = f64;
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 #[derive(Clone, Copy, Debug)]
 pub struct Vector3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
+    pub x: fxx,
+    pub y: fxx,
+    pub z: fxx,
 }
 
 impl Vector3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub fn new(x: fxx, y: fxx, z: fxx) -> Self {
         Self { x, y, z }
     }
 
-    pub fn length(&self) -> f32 {
+    pub fn length(&self) -> fxx {
         (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
 
@@ -26,7 +32,7 @@ impl Vector3 {
         Self::new(self.x / len, self.y / len, self.z / len)
     }
 
-    pub fn dot(&self, other: &Self) -> f32 {
+    pub fn dot(&self, other: &Self) -> fxx {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
 
@@ -55,15 +61,19 @@ impl Sub for Vector3 {
     }
 }
 
-impl Mul<f32> for Vector3 {
+impl Mul<fxx> for Vector3 {
     type Output = Self;
 
-    fn mul(self, scalar: f32) -> Self {
+    fn mul(self, scalar: fxx) -> Self {
         Self::new(self.x * scalar, self.y * scalar, self.z * scalar)
     }
 }
 
-// ============= Particle, Spring, and Triangle Structs =============
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
 pub struct Particle {
     pub position: Vector3,
     pub velocity: Vector3,
@@ -71,7 +81,7 @@ pub struct Particle {
 }
 
 impl Particle {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub fn new(x: fxx, y: fxx, z: fxx) -> Self {
         Self {
             position: Vector3::new(x, y, z),
             velocity: Vector3::new(0.0, 0.0, 0.0),
@@ -80,15 +90,16 @@ impl Particle {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct EdgeSpring {
     pub i: usize,
     pub j: usize,
-    pub rest_length: f32,
+    pub rest_length: fxx,
     pub edge: bool,
 }
 
 impl EdgeSpring {
-    pub fn new(i: usize, j: usize, rest_length: f32, edge: bool) -> Self {
+    pub fn new(i: usize, j: usize, rest_length: fxx, edge: bool) -> Self {
         Self {
             i,
             j,
@@ -98,26 +109,30 @@ impl EdgeSpring {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct DihedralSpring {
-    pub i1: usize,
-    pub i2: usize,
-    pub i3: usize,
-    pub i4: usize,
+    pub i1: usize, // First edge point
+    pub i2: usize, // Second edge point
+    pub i3: usize, // First wing point
+    pub i4: usize, // Second wing point
+    pub force: f64,
     pub edge: bool,
 }
 
 impl DihedralSpring {
-    pub fn new(i1: usize, i2: usize, i3: usize, i4: usize, edge: bool) -> Self {
+    pub fn new(i1: usize, i2: usize, i3: usize, i4: usize, force: f64, edge: bool) -> Self {
         Self {
             i1,
             i2,
             i3,
             i4,
+            force,
             edge,
         }
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Triangle {
     pub indices: [usize; 3],
 }
@@ -128,8 +143,11 @@ impl Triangle {
     }
 }
 
-// ============= Dihedral Spring Function =============
-fn dihedral_spring(p1: &Vector3, p2: &Vector3, p3: &Vector3, p4: &Vector3, k: f32) -> [Vector3; 4] {
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+fn dihedral_spring(p1: &Vector3, p2: &Vector3, p3: &Vector3, p4: &Vector3, k: fxx) -> [Vector3; 4] {
     // 1. Hinge axis and midpoint
     let hinge = *p2 - *p1;
     let axis = hinge.normalize();
@@ -169,17 +187,16 @@ fn dihedral_spring(p1: &Vector3, p2: &Vector3, p3: &Vector3, p4: &Vector3, k: f3
     [hinge_force, hinge_force, f3, f4]
 }
 
-// ============= Force Calculation =============
 fn calc_forces(
     particles: &mut Vec<Particle>,
     edge_springs: &Vec<EdgeSpring>,
     dihedral_springs: &Vec<DihedralSpring>,
-    edge_k: f32,
-    dihedral_k: f32,
-    damping: f32,
-    edge_coef: f32,
-    gravity_coef: f32,
-    vertex_graph_distance: &[Vec<f32>],
+    edge_k: fxx,
+    dihedral_k: fxx,
+    damping: fxx,
+    edge_coef: fxx,
+    gravity_coef: fxx,
+    vertex_graph_distance: &[Vec<fxx>],
 ) {
     // Reset forces
     for particle in particles.iter_mut() {
@@ -228,8 +245,7 @@ fn calc_forces(
 
         let forces = dihedral_spring(&p1, &p2, &p3, &p4, dihedral_k);
 
-        // let mul = if spring.edge { edge_coef } else { 1.0 };
-        let mul = 1.0;
+        let mul = spring.force;
 
         particles[spring.i1].force = particles[spring.i1].force + (forces[0] * mul);
         particles[spring.i2].force = particles[spring.i2].force + (forces[1] * mul);
@@ -243,13 +259,13 @@ fn calc_forces(
             for j in 0..i {
                 let dir = particles[i].position - particles[j].position;
                 let dir_len = dir.length();
-                let graph_dist = vertex_graph_distance[i][j] / 2.0_f32.sqrt();
+                let graph_dist = vertex_graph_distance[i][j] / (2.0 as fxx).sqrt();
                 if graph_dist < 0.2 {
                     continue;
                 }
                 let dir = dir.normalize()
                     * (1. / (dir_len * dir_len) * gravity_coef
-                        / (particles.len() * particles.len()) as f32)
+                        / (particles.len() * particles.len()) as fxx)
                     * (graph_dist * graph_dist);
 
                 particles[i].force = particles[i].force + dir;
@@ -259,14 +275,14 @@ fn calc_forces(
     }
 }
 
-fn all_pairs_shortest_paths(edges: &[EdgeSpring]) -> Vec<Vec<f32>> {
+fn all_pairs_shortest_paths(edges: &[EdgeSpring]) -> Vec<Vec<fxx>> {
     // Find the maximum vertex index to determine the graph size
     let max_vertex = edges.iter().map(|s| s.i.max(s.j)).max().unwrap_or(0);
 
     let n = max_vertex + 1; // Number of vertices
 
     // Initialize distance matrix with infinity
-    let mut dist = vec![vec![f32::INFINITY; n]; n];
+    let mut dist = vec![vec![fxx::INFINITY; n]; n];
 
     // Distance from a vertex to itself is 0
     for i in 0..n {
@@ -283,7 +299,7 @@ fn all_pairs_shortest_paths(edges: &[EdgeSpring]) -> Vec<Vec<f32>> {
     for k in 0..n {
         for i in 0..n {
             for j in 0..n {
-                if dist[i][k] != f32::INFINITY && dist[k][j] != f32::INFINITY {
+                if dist[i][k] != fxx::INFINITY && dist[k][j] != fxx::INFINITY {
                     dist[i][j] = dist[i][j].min(dist[i][k] + dist[k][j]);
                 }
             }
@@ -293,30 +309,33 @@ fn all_pairs_shortest_paths(edges: &[EdgeSpring]) -> Vec<Vec<f32>> {
     dist
 }
 
-// ============= Main Mesh Implementation =============
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
 pub struct Mesh {
     particles: Vec<Particle>,
     edge_springs: Vec<EdgeSpring>,
     dihedral_springs: Vec<DihedralSpring>,
     triangles: Vec<Triangle>,
-    size: usize,
+    sizex: usize,
+    sizey: usize,
 
     // Simulation constants
-    dt: f32,
-    edge_spring_constant: f32,
-    dihedral_spring_constant: f32,
-    damping_coefficient: f32,
-    global_damping: f32,
-    edge_coef: f32,
-    gravity_coef: f32,
+    dt: fxx,
+    edge_spring_constant: fxx,
+    dihedral_spring_constant: fxx,
+    damping_coefficient: fxx,
+    global_damping: fxx,
+    edge_coef: fxx,
+    gravity_coef: fxx,
 
     // Buffer for triangle data
     triangle_buffer: Vec<f32>,
     uv_buffer: Vec<f32>,
 
-    vertex_graph_distance: Vec<Vec<f32>>,
-
-    rng: xorshift::Xorshift128,
+    vertex_graph_distance: Vec<Vec<fxx>>,
 }
 
 impl Mesh {
@@ -326,7 +345,8 @@ impl Mesh {
             edge_springs: Vec::new(),
             dihedral_springs: Vec::new(),
             triangles: Vec::new(),
-            size: 0,
+            sizex: 0,
+            sizey: 0,
 
             dt: 0.1,
             edge_spring_constant: 10.0,
@@ -334,42 +354,48 @@ impl Mesh {
             damping_coefficient: 0.5,
             global_damping: 0.5,
             edge_coef: 1.0,
-            gravity_coef: 1.0,
+            gravity_coef: 0.0,
 
             triangle_buffer: Vec::new(),
             uv_buffer: Vec::new(),
             vertex_graph_distance: Vec::new(),
-
-            rng: xorshift::SeedableRng::from_seed([42u64, 137u64].as_slice()),
         }
     }
 
-    pub fn init(&mut self, size: usize) {
+    pub fn init(&mut self, sizex: usize, sizey: usize) {
         // Clear existing data
         self.particles.clear();
         self.edge_springs.clear();
         self.dihedral_springs.clear();
         self.triangles.clear();
-        self.size = size;
+        self.sizex = sizex;
+        self.sizey = sizey;
 
-        let vertical_size = 1.;
+        let sizea = sizex.min(sizey);
 
         // Create particles in a grid
-        for i in 0..size {
-            for j in 0..size {
-                let x = i as f32 / (size - 1) as f32;
-                let y = j as f32 / (size - 1) as f32 * vertical_size;
+        for i in 0..sizex {
+            for j in 0..sizey {
+                let x = i as fxx / (sizea - 1) as fxx;
+                let y = j as fxx / (sizea - 1) as fxx;
                 let z = 0.0;
                 self.particles.push(Particle::new(x, y, z));
             }
         }
 
         // Helper function to get index from grid coordinates
-        let get_index = |i, j| i * size + j;
+        // let get_index = |mut i: i32, mut j: i32| {
+        let get_index = |i, j| {
+            // if i < 0 { i = sizex + i; }
+            // if i >= sizex
+            i * sizey + j
+        };
+
+        let get_index_inv = |i, j| get_index(j, i);
 
         // Create edge springs and triangles
-        for i in 0..size - 1 {
-            for j in 0..size - 1 {
+        for i in 0..sizex - 1 {
+            for j in 0..sizey - 1 {
                 let idx00 = get_index(i, j);
                 let idx01 = get_index(i, j + 1);
                 let idx10 = get_index(i + 1, j);
@@ -392,7 +418,7 @@ impl Mesh {
                     .push(EdgeSpring::new(idx00, idx10, rest_length_v, false));
 
                 // Bottom edge springs (for last row/column)
-                if i == size - 2 {
+                if i == sizex - 2 {
                     let rest_length_bottom = (p11 - p10).length();
                     self.edge_springs.push(EdgeSpring::new(
                         idx10,
@@ -402,7 +428,7 @@ impl Mesh {
                     ));
                 }
 
-                if j == size - 2 {
+                if j == sizey - 2 {
                     let rest_length_right = (p11 - p01).length();
                     self.edge_springs
                         .push(EdgeSpring::new(idx01, idx11, rest_length_right, false));
@@ -437,73 +463,115 @@ impl Mesh {
                 for &idx in &triangle.indices {
                     let particle = &self.particles[idx];
                     // Use x and y as u and v (they're already in 0..1 range)
-                    self.uv_buffer[index] = particle.position.x;
-                    self.uv_buffer[index + 1] = particle.position.y / vertical_size;
+                    self.uv_buffer[index] = particle.position.x as f32 / ((sizex - 1) as f32 / (sizea - 1) as f32);
+                    self.uv_buffer[index + 1] = particle.position.y as f32 / ((sizey - 1) as f32 / (sizea - 1) as f32);
                     index += 2;
                 }
             }
         }
 
-        // Create dihedral springs
-        let mut edge_to_triangles: std::collections::HashMap<String, Vec<(usize, usize)>> =
-            std::collections::HashMap::new();
-
-        // Helper function to create edge key
-        let get_edge_key = |i: usize, j: usize| -> String {
-            if i < j {
-                format!("{}-{}", i, j)
-            } else {
-                format!("{}-{}", j, i)
+        let spring_dist = 1;
+        for i in spring_dist..sizex - 1 - spring_dist {
+            for j in 0..sizey - 2 {
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, j),
+                    get_index(i, j + 1),
+                    get_index(i - spring_dist, j),
+                    get_index(i + spring_dist, j + 1),
+                    1.0,
+                    false,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, j),
+                    get_index(i, j + 1),
+                    get_index(i - spring_dist, j+1),
+                    get_index(i + spring_dist, j),
+                    1.0,
+                    false,
+                ));
             }
-        };
-
-        // Register triangle edges
-        for t in 0..self.triangles.len() {
-            let triangle = &self.triangles[t];
-
-            for e in 0..3 {
-                let i = triangle.indices[e];
-                let j = triangle.indices[(e + 1) % 3];
-                let edge_key = get_edge_key(i, j);
-
-                let k = triangle.indices[(e + 2) % 3];
-
-                edge_to_triangles
-                    .entry(edge_key)
-                    .or_insert_with(Vec::new)
-                    .push((t, k));
+        }
+        for i in 0..sizex - 2 {
+            for j in spring_dist..sizey - 1 - spring_dist {
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, j),
+                    get_index(i + 1, j),
+                    get_index(i, j - spring_dist),
+                    get_index(i + 1, j + spring_dist),
+                    1.0,
+                    false,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, j),
+                    get_index(i + 1, j),
+                    get_index(i+1, j - spring_dist),
+                    get_index(i, j + spring_dist),
+                    1.0,
+                    false,
+                ));
+            }
+        }
+        for i in 0..sizex - 2 {
+            for j in 0..sizey - 2 {
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i+1, j),
+                    get_index(i, j+1),
+                    get_index(i, j),
+                    get_index(i+1, j+1),
+                    1.0,
+                    false,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, j),
+                    get_index(i+1, j+1),
+                    get_index(i, j+1),
+                    get_index(i+1, j),
+                    1.0,
+                    false,
+                ));
             }
         }
 
-        // Create dihedral springs
-        for (edge_key, entries) in edge_to_triangles {
-            if entries.len() == 2 {
-                let edge_parts: Vec<&str> = edge_key.split('-').collect();
-                let i: usize = edge_parts[0].parse().unwrap();
-                let j: usize = edge_parts[1].parse().unwrap();
-
+        let spring_dist = 2;
+        for i in spring_dist..sizex - 1 - spring_dist {
+            for j in 0..sizey - 2 {
                 self.dihedral_springs.push(DihedralSpring::new(
-                    i,
-                    j,
-                    entries[0].1,
-                    entries[1].1,
+                    get_index(i, j),
+                    get_index(i, j + 1),
+                    get_index(i - spring_dist, j),
+                    get_index(i + spring_dist, j + 1),
+                    0.25,
+                    false,
+                ));
+            }
+        }
+        for i in 0..sizex - 2 {
+            for j in spring_dist..sizey - 1 - spring_dist {
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, j),
+                    get_index(i + 1, j),
+                    get_index(i, j - spring_dist),
+                    get_index(i + 1, j + spring_dist),
+                    0.25,
                     false,
                 ));
             }
         }
 
         // Modify Z coordinates of first row
+        let mut rng: xorshift::Xorshift128 =
+            xorshift::SeedableRng::from_seed([42u64, 137u64].as_slice());
         for particle in &mut self.particles {
             use xorshift::Rng;
-            particle.position.z += self.rng.gen_range(-0.001, 0.001);
+            particle.position.z += rng.gen_range(-0.001, 0.001);
         }
 
         // Add special springs
-        if true {
-            let blue_x = (size as f32 * 0.2) as usize;
-            let orange_x = (size as f32 * 0.8) as usize;
-            let start_y = (size as f32 * 0.4) as usize;
-            let end_y = (size as f32 * 0.6) as usize;
+        if false {
+            let blue_x = (sizea as fxx * 0.2) as usize;
+            let orange_x = (sizea as fxx * 0.8) as usize;
+            let start_y = (sizea as fxx * 0.4) as usize;
+            let end_y = (sizea as fxx * 0.6) as usize;
 
             for i in start_y..=end_y {
                 self.edge_springs.push(EdgeSpring::new(
@@ -521,6 +589,23 @@ impl Mesh {
                     get_index(blue_x, i + 1),
                     get_index(blue_x + 1, i + 1),
                     get_index(orange_x - 1, i),
+                    1.0,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(blue_x, i),
+                    get_index(blue_x, i + 1),
+                    get_index(blue_x + 2, i + 1),
+                    get_index(orange_x - 2, i),
+                    0.25,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(blue_x+1, i),
+                    get_index(blue_x+1, i + 1),
+                    get_index(blue_x + 3, i + 1),
+                    get_index(orange_x - 1, i),
+                    0.25,
                     true,
                 ));
 
@@ -529,70 +614,152 @@ impl Mesh {
                     get_index(blue_x, i + 1),
                     get_index(blue_x - 1, i + 1),
                     get_index(orange_x + 1, i),
+                    1.0,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(blue_x, i),
+                    get_index(blue_x, i + 1),
+                    get_index(blue_x - 2, i + 1),
+                    get_index(orange_x + 2, i),
+                    0.25,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(blue_x-1, i),
+                    get_index(blue_x-1, i + 1),
+                    get_index(blue_x - 3, i + 1),
+                    get_index(orange_x + 1, i),
+                    0.25,
                     true,
                 ));
             }
         }
 
-        if false {
-            for i in 0..size {
+        if true {
+            for j in 0..sizey {
                 // cylinder
                 self.edge_springs.push(EdgeSpring::new(
-                    get_index(0, i),
-                    get_index(size - 1, i),
+                    get_index(0, j),
+                    get_index(sizex - 1, j),
                     0.0,
                     true,
                 ));
-
+            }
+            for i in 0..sizex {
                 // cylinder + this = torus
-                // self.edge_springs.push(EdgeSpring::new(
-                //     get_index(i, 0),
-                //     get_index(i, size-1),
-                //     0.0,
-                //     true
-                // ));
-
-                // mobius strip
-                // self.edge_springs.push(EdgeSpring::new(
-                //     get_index(0, i),
-                //     get_index(size-1, size-1 - i),
-                //     0.0,
-                //     true
-                // ));
+                self.edge_springs.push(EdgeSpring::new(
+                    get_index(i, 0),
+                    get_index(i, sizey-1),
+                    0.0,
+                    true
+                ));
             }
 
-            for i in 0..size - 1 {
+            // for j in 0..sizey {
+            //     // mobius strip
+            //     self.edge_springs.push(EdgeSpring::new(
+            //         get_index(0, j),
+            //         get_index(sizex - 1, sizey - 1 - j),
+            //         0.0,
+            //         true,
+            //     ));
+            // }
+
+            for j in 0..sizey - 1 {
                 // cylinder
                 self.dihedral_springs.push(DihedralSpring::new(
-                    get_index(0, i),
-                    get_index(0, i + 1),
-                    get_index(1, i + 1),
-                    get_index(size - 2, i),
+                    get_index(0, j),
+                    get_index(0, j + 1),
+                    get_index(1, j + 1),
+                    get_index(sizex - 2, j),
+                    1.0,
                     true,
                 ));
-
-                // cylinder + this = torus
-                // self.dihedral_springs.push(DihedralSpring::new(
-                //     get_index(i, 0),
-                //     get_index(i+1, 0),
-                //     get_index(i+1, 1),
-                //     get_index(i, size-2),
-                //     true
-                // ));
-
-                // mobius strip
-                // self.dihedral_springs.push(DihedralSpring::new(
-                //     get_index(0, size-1 - i),
-                //     get_index(0, size-1 - (i+1)),
-                //     get_index(1, size-1 - (i+1)),
-                //     get_index(size-2, size-1 - i),
-                //     true
-                // ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(1, j),
+                    get_index(1, j + 1),
+                    get_index(3, j + 1),
+                    get_index(sizex - 2, j),
+                    0.25,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(0, j),
+                    get_index(0, j + 1),
+                    get_index(2, j + 1),
+                    get_index(sizex - 3, j),
+                    0.25,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(sizex - 2, j),
+                    get_index(sizex - 2, j + 1),
+                    get_index(1, j + 1),
+                    get_index(sizex - 4, j),
+                    0.25,
+                    true,
+                ));
             }
+            for i in 0..sizex - 1 {
+                // cylinder + this = torus
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index(i, 0),
+                    get_index(i+1, 0),
+                    get_index(i+1, 1),
+                    get_index(i, sizey-2),
+                    1.0,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index_inv(1, i),
+                    get_index_inv(1, i + 1),
+                    get_index_inv(3, i + 1),
+                    get_index_inv(sizey - 2, i),
+                    0.25,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index_inv(0, i),
+                    get_index_inv(0, i + 1),
+                    get_index_inv(2, i + 1),
+                    get_index_inv(sizey - 3, i),
+                    0.25,
+                    true,
+                ));
+                self.dihedral_springs.push(DihedralSpring::new(
+                    get_index_inv(sizey - 2, i),
+                    get_index_inv(sizey - 2, i + 1),
+                    get_index_inv(1, i + 1),
+                    get_index_inv(sizey - 4, i),
+                    0.25,
+                    true,
+                ));
+            }
+
+            // for i in 0..sizey - 1 {
+            //     // mobius strip
+            //     self.dihedral_springs.push(DihedralSpring::new(
+            //         get_index(0, sizey - 1 - i),
+            //         get_index(0, sizey - 1 - (i + 1)),
+            //         get_index(1, sizey - 1 - (i + 1)),
+            //         get_index(sizex - 1 - 1, sizey - 1 - i),
+            //         1.0,
+            //         true,
+            //     ));
+            //     self.dihedral_springs.push(DihedralSpring::new(
+            //         get_index(0, sizey - 1 - i),
+            //         get_index(0, sizey - 1 - (i + 1)),
+            //         get_index(2, sizey - 1 - (i + 1)),
+            //         get_index(sizex - 1 - 2, sizey - 1 - i),
+            //         0.25,
+            //         true,
+            //     ));
+            // }
         }
 
         // Update vertex graph distances
-        self.vertex_graph_distance = all_pairs_shortest_paths(&self.edge_springs);
+        // self.vertex_graph_distance = all_pairs_shortest_paths(&self.edge_springs);
 
         // Initialize the triangle buffer
         self.update_triangle_buffer();
@@ -605,7 +772,7 @@ impl Mesh {
         for particle in &self.particles {
             avg = avg + particle.position;
         }
-        avg = avg * (1.0 / self.particles.len() as f32);
+        avg = avg * (1.0 / self.particles.len() as fxx);
 
         // Size the buffer correctly (3 vertices * 3 coordinates per triangle)
         let buffer_size = self.triangles.len() * 9;
@@ -618,9 +785,9 @@ impl Mesh {
         for triangle in &self.triangles {
             for &idx in &triangle.indices {
                 let pos = self.particles[idx].position - avg;
-                self.triangle_buffer[index] = pos.x;
-                self.triangle_buffer[index + 1] = pos.y;
-                self.triangle_buffer[index + 2] = pos.z;
+                self.triangle_buffer[index] = pos.x as f32;
+                self.triangle_buffer[index + 1] = pos.y as f32;
+                self.triangle_buffer[index + 2] = pos.z as f32;
                 index += 3;
             }
         }
@@ -754,7 +921,7 @@ impl Mesh {
     }
 
     // Get constants
-    pub fn get_constants(&self) -> (f32, f32, f32, f32, f32, f32, f32) {
+    pub fn get_constants(&self) -> (fxx, fxx, fxx, fxx, fxx, fxx, fxx) {
         (
             self.dt,
             self.edge_spring_constant,
@@ -769,13 +936,13 @@ impl Mesh {
     // Set constant
     pub fn set_constant(&mut self, name: &str, value: f32) {
         match name {
-            "dt" => self.dt = value,
-            "edgeSpringConstant" => self.edge_spring_constant = value,
-            "dihedralSpringConstant" => self.dihedral_spring_constant = value,
-            "dampingCoefficient" => self.damping_coefficient = value,
-            "globalDamping" => self.global_damping = value,
-            "edgeCoef" => self.edge_coef = value,
-            "gravityCoef" => self.gravity_coef = value,
+            "dt" => self.dt = value as fxx,
+            "edgeSpringConstant" => self.edge_spring_constant = value as fxx,
+            "dihedralSpringConstant" => self.dihedral_spring_constant = value as fxx,
+            "dampingCoefficient" => self.damping_coefficient = value as fxx,
+            "globalDamping" => self.global_damping = value as fxx,
+            "edgeCoef" => self.edge_coef = value as fxx,
+            "gravityCoef" => self.gravity_coef = value as fxx,
             _ => {}
         }
     }
@@ -794,7 +961,10 @@ impl Mesh {
     }
 }
 
-// ============= WASM Interface =============
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 #[wasm_bindgen]
 pub struct MeshHandle {
     mesh: Mesh,
@@ -803,15 +973,17 @@ pub struct MeshHandle {
 #[wasm_bindgen]
 impl MeshHandle {
     #[wasm_bindgen(constructor)]
-    pub fn new(size: usize) -> Self {
+    pub fn new(sizex: usize, sizey: usize) -> Self {
         let mut mesh = Mesh::new();
-        mesh.init(size);
+        mesh.init(sizex, sizey);
         mesh.step();
+
         Self { mesh }
     }
 
     pub fn step(&mut self) {
-        self.mesh.step()
+        self.mesh.step();
+        self.mesh.update_triangle_buffer();
     }
 
     pub fn get_triangle_buffer(&self) -> *const f32 {
@@ -831,6 +1003,10 @@ impl MeshHandle {
     }
 }
 
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -838,7 +1014,7 @@ mod tests {
     #[test]
     fn test() {
         let mut mesh = Mesh::new();
-        mesh.init(10);
+        mesh.init(10, 20);
         mesh.step();
         mesh.step();
         mesh.step();
