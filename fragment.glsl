@@ -4,6 +4,7 @@ uniform float size;
 uniform float darknessFactor;
 uniform float anim;
 uniform int drawPortalSurface;
+uniform int drawUv;
 
 varying vec3 vNormal;
 varying vec3 vViewPosition;
@@ -91,7 +92,7 @@ vec4 alphaBlend(vec4 src, vec4 dst) {
 }
 
 // Portal1 scene
-vec4 drawPortal1Scene(vec2 uv) {
+vec4 drawPortal1Scene(vec2 uv, float offset) {
     float blueX = 0.2;
     float orangeX = 0.8;
     float startY = 0.4;
@@ -111,14 +112,14 @@ vec4 drawPortal1Scene(vec2 uv) {
     vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
     
     // Only draw if uv.x is less than center.x (discardRight = true)
-    if (uv.x <= blueX) {
+    if (uv.x <= blueX-offset) {
         vec4 square1 = drawRotatedSquare(uv, vec2(blueX + anim*0.1, (startY + endY) / 2.0), 
                                         sq1Size, sq1Angle, sq1Color);
         result = alphaBlend(square1, result);
     }
     
     // Only draw if uv.x is greater than center.x (discardLeft = true)
-    if (uv.x >= orangeX) {
+    if (uv.x >= orangeX-offset) {
         vec4 square2 = drawRotatedSquare(uv, vec2(orangeX + anim*0.1, (startY + endY) / 2.0), 
                                         sq1Size, sq1Angle, sq1Color);
         result = alphaBlend(square2, result);
@@ -130,14 +131,14 @@ vec4 drawPortal1Scene(vec2 uv) {
     vec4 sq2Color = vec4(128.0/255.0, 128.0/255.0, 1.0, 192.0/255.0);
     
     // Only draw if uv.x is greater than center.x (discardLeft = true)
-    if (uv.x >= blueX) {
+    if (uv.x >= blueX-offset) {
         vec4 square3 = drawRotatedSquare(uv, vec2(blueX - 0.02 - anim*0.3, (startY + endY) / 2.0 + 0.01), 
                                         sq2Size, sq2Angle, sq2Color);
         result = alphaBlend(square3, result);
     }
     
     // Only draw if uv.x is less than center.x (discardRight = true)
-    if (uv.x <= orangeX) {
+    if (uv.x <= orangeX-offset) {
         vec4 square4 = drawRotatedSquare(uv, vec2(orangeX - 0.02 - anim*0.3, (startY + endY) / 2.0 + 0.01), 
                                         sq2Size, sq2Angle, sq2Color);
         result = alphaBlend(square4, result);
@@ -151,8 +152,15 @@ vec4 drawPortal1Scene(vec2 uv) {
     result = alphaBlend(blueCircle2, result);
     
     if (drawPortalSurface == 1) {
-        vec4 blueLine = drawLine(uv, vec2(blueX, startY), vec2(blueX, endY), thickness, blueColor);
+        vec4 blueLine = drawLine(uv, vec2(blueX-offset, startY), vec2(blueX-offset, endY), thickness, blueColor);
         result = alphaBlend(blueLine, result);
+    }
+    if (drawPortalSurface == 1 && offset != 0.) {
+        vec4 blueLine = drawLine(uv, vec2(blueX, startY), vec2(blueX-offset, startY), thickness, blueColor);
+        result = alphaBlend(blueLine, result);
+
+        vec4 blueLine2 = drawLine(uv, vec2(blueX, endY), vec2(blueX-offset, endY), thickness, blueColor);
+        result = alphaBlend(blueLine2, result);
     }
     
     // Draw orange portal
@@ -163,8 +171,15 @@ vec4 drawPortal1Scene(vec2 uv) {
     result = alphaBlend(orangeCircle2, result);
     
     if (drawPortalSurface == 1) {
-        vec4 orangeLine = drawLine(uv, vec2(orangeX, startY), vec2(orangeX, endY), thickness, orangeColor);
+        vec4 orangeLine = drawLine(uv, vec2(orangeX-offset, startY), vec2(orangeX-offset, endY), thickness, orangeColor);
         result = alphaBlend(orangeLine, result);
+    }
+    if (drawPortalSurface == 1 && offset != 0.) {
+        vec4 orangeLine = drawLine(uv, vec2(orangeX, startY), vec2(orangeX-offset, startY), thickness, orangeColor);
+        result = alphaBlend(orangeLine, result);
+
+        vec4 orangeLine2 = drawLine(uv, vec2(orangeX, endY), vec2(orangeX-offset, endY), thickness, orangeColor);
+        result = alphaBlend(orangeLine2, result);
     }
     
     return result;
@@ -291,14 +306,20 @@ void main() {
     
     // Draw appropriate scene based on scene type
     vec4 texColor;
-    if (sceneType == 0) {
-        texColor = drawPortal1Scene(texUV);
-    } else if (sceneType == 1) {
-        texColor = drawCylinderScene(texUV);
-    } else if (sceneType == 2) {
-        texColor = drawTorusScene(texUV);
+    if (drawUv == 1) {
+        texColor = vec4(vUv, 0., 0.);
     } else {
-        texColor = drawFlatScene(texUV);
+        if (sceneType == 0) {
+            texColor = drawPortal1Scene(texUV, 0.);
+        } else if (sceneType == 1) {
+            texColor = drawCylinderScene(texUV);
+        } else if (sceneType == 2) {
+            texColor = drawTorusScene(texUV);
+        } else if (sceneType == 3) {
+            texColor = drawFlatScene(texUV);
+        } else if (sceneType == 4) {
+            texColor = drawPortal1Scene(texUV, 2. / size);
+        }
     }
     
     // Apply darkness to the texture color

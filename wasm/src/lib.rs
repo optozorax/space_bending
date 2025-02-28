@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::ops::{Add, Mul, Sub};
 use wasm_bindgen::prelude::*;
 
@@ -99,11 +101,7 @@ pub struct EdgeSpring {
 
 impl EdgeSpring {
     pub fn new(i: usize, j: usize, rest_length: fxx) -> Self {
-        Self {
-            i,
-            j,
-            rest_length,
-        }
+        Self { i, j, rest_length }
     }
 }
 
@@ -267,6 +265,345 @@ fn calc_forces(
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
+struct SpaceParticle {
+    left: Option<usize>,
+    right: Option<usize>,
+    down: Option<usize>,
+    up: Option<usize>,
+
+    uv: HashSet<(usize, usize)>,
+}
+
+struct SpaceGraph {
+    graph: Vec<SpaceParticle>,
+    sizex: usize,
+    sizey: usize,
+}
+
+impl SpaceGraph {
+    fn new(sizex: usize, sizey: usize) -> Self {
+        let mut result = Self {
+            graph: Default::default(),
+            sizex,
+            sizey,
+        };
+        for i in 0..sizex {
+            for j in 0..sizey {
+                result.graph.push(SpaceParticle {
+                    left: if i == 0 {
+                        None
+                    } else {
+                        Some(result.get_index(i - 1, j))
+                    },
+                    right: if i == sizex - 1 {
+                        None
+                    } else {
+                        Some(result.get_index(i + 1, j))
+                    },
+                    down: if j == 0 {
+                        None
+                    } else {
+                        Some(result.get_index(i, j - 1))
+                    },
+                    up: if j == sizey - 1 {
+                        None
+                    } else {
+                        Some(result.get_index(i, j + 1))
+                    },
+                    uv: vec![(i, j)].into_iter().collect(),
+                });
+            }
+        }
+        result
+    }
+
+    fn get_index(&self, i: usize, j: usize) -> usize {
+        i * self.sizey + j
+    }
+
+    fn make_portal1_scene(&mut self) {
+        let blue_x = (self.sizex as f32 * 0.2) as usize;
+        let orange_x = (self.sizex as f32 * 0.8) as usize;
+        let start_y = (self.sizey as f32 * 0.4) as usize;
+        let end_y = (self.sizey as f32 * 0.6) as usize;
+
+        let sizey = self.sizey;
+        let get_index = |i, j| i * sizey + j;
+
+        // -------------------------------------------------------------------
+
+        // Disconnect singularity points from up and down
+
+        self.graph[get_index(blue_x, start_y)].down = None;
+        self.graph[get_index(blue_x, start_y - 1)].up = None;
+
+        self.graph[get_index(blue_x, end_y)].up = None;
+        self.graph[get_index(blue_x, end_y + 1)].down = None;
+
+        self.graph[get_index(orange_x, start_y)].down = None;
+        self.graph[get_index(orange_x, start_y - 1)].up = None;
+
+        self.graph[get_index(orange_x, end_y)].up = None;
+        self.graph[get_index(orange_x, end_y + 1)].down = None;
+
+        // -------------------------------------------------------------------
+
+        // Connect the main vertical surface
+
+        for j in start_y..=end_y {
+            let m1 = get_index(blue_x, j);
+            let r1 = get_index(blue_x + 1, j);
+            let m2 = get_index(orange_x, j);
+            let r2 = get_index(orange_x + 1, j);
+
+            self.graph[m1].right = Some(r2);
+            self.graph[r2].left = Some(m1);
+
+            self.graph[m2].right = Some(r1);
+            self.graph[r1].left = Some(m2);
+
+            let new_uv = self.graph[m2].uv.clone();
+            self.graph[m1].uv.extend(new_uv);
+
+            let new_uv = self.graph[m1].uv.clone();
+            self.graph[m2].uv.extend(new_uv);
+        }
+    }
+
+    fn make_portal2_scene(&mut self) {
+        let mut blue_x = (self.sizex as f32 * 0.2) as usize;
+        let mut orange_x = (self.sizex as f32 * 0.8) as usize;
+        let mut start_y = (self.sizey as f32 * 0.4) as usize;
+        let mut end_y = (self.sizey as f32 * 0.6) as usize;
+
+        let sizey = self.sizey;
+        let get_index = |i, j| i * sizey + j; // I'm not using method because of stupid borrowing issues, why rust can't handle that
+
+        // -------------------------------------------------------------------
+
+        // Disconnect singularity points from up and down
+
+        self.graph[get_index(blue_x, start_y)].down = None;
+        self.graph[get_index(blue_x, start_y - 1)].up = None;
+
+        self.graph[get_index(blue_x, end_y)].up = None;
+        self.graph[get_index(blue_x, end_y + 1)].down = None;
+
+        self.graph[get_index(orange_x, start_y)].down = None;
+        self.graph[get_index(orange_x, start_y - 1)].up = None;
+
+        self.graph[get_index(orange_x, end_y)].up = None;
+        self.graph[get_index(orange_x, end_y + 1)].down = None;
+
+        // -------------------------------------------------------------------
+
+        // Connect upper and lower portal surface
+
+        for _ in 0..2 {
+            self.graph[get_index(blue_x, start_y)].up = Some(get_index(orange_x, start_y + 1));
+            self.graph[get_index(orange_x, start_y + 1)].down = Some(get_index(blue_x, start_y));
+
+            self.graph[get_index(orange_x, start_y)].up = Some(get_index(blue_x, start_y + 1));
+            self.graph[get_index(blue_x, start_y + 1)].down = Some(get_index(orange_x, start_y));
+
+            let new_uv = self.graph[get_index(blue_x, start_y)].uv.clone();
+            self.graph[get_index(orange_x, start_y)].uv.extend(new_uv);
+
+            let new_uv = self.graph[get_index(orange_x, start_y)].uv.clone();
+            self.graph[get_index(blue_x, start_y)].uv.extend(new_uv);
+
+            // ---------------------------------------------------------------
+
+            self.graph[get_index(blue_x, end_y)].down = Some(get_index(orange_x, end_y - 1));
+            self.graph[get_index(orange_x, end_y - 1)].up = Some(get_index(blue_x, end_y));
+
+            self.graph[get_index(orange_x, end_y)].down = Some(get_index(blue_x, end_y - 1));
+            self.graph[get_index(blue_x, end_y - 1)].up = Some(get_index(orange_x, end_y));
+
+            let new_uv = self.graph[get_index(blue_x, end_y)].uv.clone();
+            self.graph[get_index(orange_x, end_y)].uv.extend(new_uv);
+
+            let new_uv = self.graph[get_index(orange_x, end_y)].uv.clone();
+            self.graph[get_index(blue_x, end_y)].uv.extend(new_uv);
+
+            blue_x -= 1;
+            orange_x -= 1;
+        }
+        blue_x += 2;
+        orange_x += 2;
+
+        // -------------------------------------------------------------------
+
+        // Connect singularity points from left to right (this is ok) in lower part
+
+        let m1 = get_index(blue_x, start_y);
+        let r1 = get_index(blue_x + 1, start_y);
+        let m2 = get_index(orange_x, start_y);
+        let r2 = get_index(orange_x + 1, start_y);
+
+        self.graph[m1].right = Some(r2);
+        self.graph[r2].left = Some(m1);
+
+        self.graph[m2].right = Some(r1);
+        self.graph[r1].left = Some(m2);
+
+        let new_uv = self.graph[m2].uv.clone();
+        self.graph[m1].uv.extend(new_uv);
+
+        let new_uv = self.graph[m1].uv.clone();
+        self.graph[m2].uv.extend(new_uv);
+
+        let m1 = get_index(blue_x, end_y);
+        let r1 = get_index(blue_x + 1, end_y);
+        let m2 = get_index(orange_x, end_y);
+        let r2 = get_index(orange_x + 1, end_y);
+
+        self.graph[m1].right = Some(r2);
+        self.graph[r2].left = Some(m1);
+
+        self.graph[m2].right = Some(r1);
+        self.graph[r1].left = Some(m2);
+
+        let new_uv = self.graph[m2].uv.clone();
+        self.graph[m1].uv.extend(new_uv);
+
+        let new_uv = self.graph[m1].uv.clone();
+        self.graph[m2].uv.extend(new_uv);
+
+        // -------------------------------------------------------------------
+
+        blue_x -= 2;
+        orange_x -= 2;
+
+        // -------------------------------------------------------------------
+
+        // Add uv coordinates to singularity points
+
+        let m1 = get_index(blue_x, start_y);
+        let m2 = get_index(orange_x, start_y);
+        let new_uv = self.graph[m2].uv.clone();
+        self.graph[m1].uv.extend(new_uv);
+
+        let new_uv = self.graph[m1].uv.clone();
+        self.graph[m2].uv.extend(new_uv);
+
+        let m1 = get_index(blue_x, end_y);
+        let m2 = get_index(orange_x, end_y);
+        let new_uv = self.graph[m2].uv.clone();
+        self.graph[m1].uv.extend(new_uv);
+
+        let new_uv = self.graph[m1].uv.clone();
+        self.graph[m2].uv.extend(new_uv);
+
+        // -------------------------------------------------------------------
+
+        // Connect the main vertical surface
+
+        start_y += 1;
+        end_y -= 1;
+        for j in start_y..=end_y {
+            let m1 = get_index(blue_x, j);
+            let r1 = get_index(blue_x + 1, j);
+            let m2 = get_index(orange_x, j);
+            let r2 = get_index(orange_x + 1, j);
+
+            self.graph[m1].right = Some(r2);
+            self.graph[r2].left = Some(m1);
+
+            self.graph[m2].right = Some(r1);
+            self.graph[r1].left = Some(m2);
+
+            let new_uv = self.graph[m2].uv.clone();
+            self.graph[m1].uv.extend(new_uv);
+
+            let new_uv = self.graph[m1].uv.clone();
+            self.graph[m2].uv.extend(new_uv);
+        }
+    }
+}
+
+impl SpaceGraph {
+    /// Compares if this SpaceGraph is structurally equal to another SpaceGraph
+    pub fn is_equal_to(&self, other: &SpaceGraph) -> bool {
+        use std::collections::{HashMap, HashSet, VecDeque};
+
+        // Check if dimensions match
+        if self.sizex != other.sizex || self.sizey != other.sizey {
+            return false;
+        }
+
+        // Handle empty graphs
+        if self.graph.is_empty() && other.graph.is_empty() {
+            return true;
+        }
+        if self.graph.is_empty() || other.graph.is_empty() {
+            return false;
+        }
+
+        // Initialize BFS queue starting with both graphs' node 0
+        let mut queue = VecDeque::new();
+        queue.push_back((0, 0)); // (self_index, other_index)
+
+        // Keep track of visited nodes and mappings between graph indices
+        let mut visited = HashSet::new();
+        let mut index_mapping = HashMap::new(); // Maps self indices to other indices
+
+        while let Some((self_idx, other_idx)) = queue.pop_front() {
+            // Skip if we've already processed this pair
+            if !visited.insert((self_idx, other_idx)) {
+                continue;
+            }
+
+            // Store the mapping
+            index_mapping.insert(self_idx, other_idx);
+
+            // Get the particles to compare
+            let self_particle = &self.graph[self_idx];
+            let other_particle = &other.graph[other_idx];
+
+            // Check directional connections
+            if !self.check_direction_match(self_particle.left, other_particle.left)
+                || !self.check_direction_match(self_particle.right, other_particle.right)
+                || !self.check_direction_match(self_particle.down, other_particle.down)
+                || !self.check_direction_match(self_particle.up, other_particle.up)
+            {
+                return false;
+            }
+
+            // Add connected nodes to the queue
+            self.add_to_queue_if_connected(&mut queue, self_particle.left, other_particle.left);
+            self.add_to_queue_if_connected(&mut queue, self_particle.right, other_particle.right);
+            self.add_to_queue_if_connected(&mut queue, self_particle.down, other_particle.down);
+            self.add_to_queue_if_connected(&mut queue, self_particle.up, other_particle.up);
+        }
+
+        // Ensure all nodes were visited (graph is fully connected)
+        index_mapping.len() == self.graph.len() && index_mapping.len() == other.graph.len()
+    }
+
+    /// Helper to check if direction connections match in pattern
+    fn check_direction_match(&self, self_dir: Option<usize>, other_dir: Option<usize>) -> bool {
+        // Both should either have a connection or not have a connection
+        self_dir.is_some() == other_dir.is_some()
+    }
+
+    /// Helper to add connected nodes to the queue
+    fn add_to_queue_if_connected(
+        &self,
+        queue: &mut VecDeque<(usize, usize)>,
+        self_dir: Option<usize>,
+        other_dir: Option<usize>,
+    ) {
+        if let (Some(self_next), Some(other_next)) = (self_dir, other_dir) {
+            queue.push_back((self_next, other_next));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 #[derive(Clone, Debug)]
 pub struct Mesh {
     particles: Vec<Particle>,
@@ -336,85 +673,47 @@ impl Mesh {
         // Helper function to get index from grid coordinates
         let get_index = |i, j| i * sizey + j;
         let get_index_inv = |i, j| get_index(j, i);
-        let get_coords = |idx: usize| (idx / sizey, idx % sizey);
+        // let get_coords = |idx: usize| (idx / sizey, idx % sizey);
 
-        struct SpaceParticle {
-            left: Option<usize>,            
-            right: Option<usize>,            
-            down: Option<usize>,            
-            up: Option<usize>,      
-
-            uv: Vec<(usize, usize)>,    
-        }
-
-        let mut space_graph: Vec<SpaceParticle> = Default::default();
-        for i in 0..sizex {
-            for j in 0..sizey {
-                space_graph.push(SpaceParticle {
-                    left: if i == 0 { None } else { Some(get_index(i-1, j)) },
-                    right: if i == sizex-1 { None } else { Some(get_index(i+1, j)) },
-                    down: if j == 0 { None } else { Some(get_index(i, j-1)) },
-                    up: if j == sizey-1 { None } else { Some(get_index(i, j+1)) },
-                    uv: vec![(i, j)],
-                });
-            }
-        }
+        let mut space_graph = SpaceGraph::new(sizex, sizey);
 
         if scene == "cylinder" || scene == "torus" {
             for j in 0..sizey {
-                space_graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizex-2));
-                space_graph[get_index_inv(j, sizex-2)].right = Some(get_index_inv(j, 0));
+                space_graph.graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizex - 2));
+                space_graph.graph[get_index_inv(j, sizex - 2)].right = Some(get_index_inv(j, 0));
 
-                let new_uv = space_graph[get_index_inv(j, sizex-1)].uv.clone();
-                space_graph[get_index_inv(j, 0)].uv.extend(new_uv);
-                space_graph[get_index_inv(j, sizex-1)].left = None;
+                let new_uv = space_graph.graph[get_index_inv(j, sizex - 1)].uv.clone();
+                space_graph.graph[get_index_inv(j, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index_inv(j, sizex - 1)].left = None;
             }
         }
         if scene == "torus" {
             for i in 0..sizex {
-                space_graph[get_index(i, 0)].down = Some(get_index(i, sizey-2));
-                space_graph[get_index(i, sizey-2)].up = Some(get_index(i, 0));
+                space_graph.graph[get_index(i, 0)].down = Some(get_index(i, sizey - 2));
+                space_graph.graph[get_index(i, sizey - 2)].up = Some(get_index(i, 0));
 
-                let new_uv = space_graph[get_index(i, sizey-1)].uv.clone();
-                space_graph[get_index(i, 0)].uv.extend(new_uv);
-                space_graph[get_index(i, sizey-1)].down = None;
+                let new_uv = space_graph.graph[get_index(i, sizey - 1)].uv.clone();
+                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index(i, sizey - 1)].down = None;
             }
         }
         if scene == "mobius_strip" {
             for i in 0..sizex {
-                space_graph[get_index(i, 0)].down = Some(get_index(sizex-1 - i, sizey-2));
-                space_graph[get_index(sizex-1 - i, sizey-2)].up = Some(get_index(i, 0));
+                space_graph.graph[get_index(i, 0)].down = Some(get_index(sizex - 1 - i, sizey - 2));
+                space_graph.graph[get_index(sizex - 1 - i, sizey - 2)].up = Some(get_index(i, 0));
 
-                let new_uv = space_graph[get_index(sizex-1 - i, sizey-1)].uv.clone();
-                space_graph[get_index(i, 0)].uv.extend(new_uv);
-                space_graph[get_index(i, sizey-1)].down = None;
+                let new_uv = space_graph.graph[get_index(sizex - 1 - i, sizey - 1)]
+                    .uv
+                    .clone();
+                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index(i, sizey - 1)].down = None;
             }
         }
         if scene == "portal1" {
-            // Add special springs
-            let blue_x = (sizex as f32 * 0.2) as usize;
-            let orange_x = (sizex as f32 * 0.8) as usize;
-            let start_y = (sizey as f32 * 0.4) as usize;
-            let end_y = (sizey as f32 * 0.6) as usize;
-
-            space_graph[get_index(blue_x, start_y-1)].up = None;
-            space_graph[get_index(blue_x, end_y+1)].down = None;
-            space_graph[get_index(orange_x, start_y-1)].up = None;
-            space_graph[get_index(orange_x, end_y+1)].down = None;
-
-            for j in start_y..=end_y {
-                space_graph[get_index(blue_x, j)].right = Some(get_index(orange_x+1, j));
-                space_graph[get_index(orange_x+1, j)].left = Some(get_index(blue_x, j));
-
-                space_graph[get_index(orange_x, j)].right = Some(get_index(blue_x+1, j));
-                space_graph[get_index(blue_x+1, j)].left = Some(get_index(orange_x, j));
-
-                let new_uv = space_graph[get_index(orange_x, j)].uv.clone();
-                space_graph[get_index(blue_x, j)].uv.extend(new_uv);
-
-                let new_uv = space_graph[get_index(blue_x, j)].uv.clone();
-                space_graph[get_index(orange_x, j)].uv.extend(new_uv);
-            }
+            space_graph.make_portal1_scene();
+        }
+        if scene == "portal2" {
+            space_graph.make_portal2_scene();
         }
 
         macro_rules! trying {
@@ -428,10 +727,18 @@ impl Mesh {
 
         for idx in 0..self.particles.len() {
             macro_rules! process_move {
-                ($temp:expr, R) => { space_graph[$temp].right? };
-                ($temp:expr, U) => { space_graph[$temp].up? };
-                ($temp:expr, D) => { space_graph[$temp].down? };
-                ($temp:expr, L) => { space_graph[$temp].left? };
+                ($temp:expr, R) => {
+                    space_graph.graph[$temp].right?
+                };
+                ($temp:expr, U) => {
+                    space_graph.graph[$temp].up?
+                };
+                ($temp:expr, D) => {
+                    space_graph.graph[$temp].down?
+                };
+                ($temp:expr, L) => {
+                    space_graph.graph[$temp].left?
+                };
             }
 
             macro_rules! mv {
@@ -472,14 +779,16 @@ impl Mesh {
                 if idx == mv!(U R D L) && mv!(U R D L) == mv!(R U L D) {
                     self.triangles.push(Triangle::new(idx, mv!(R), mv!(U)));
                 } else {
-                    dbg!(get_coords(idx), get_coords(mv!(U R D L)), get_coords(mv!(R U L D)));
+                    // eprintln!("TR_RU, idx: {:?}, URDL: {:?}, RULD: {:?}", get_coords(idx), get_coords(mv!(U R D L)), get_coords(mv!(R U L D)));
+                    // eprintln!("U: {:?}, UR: {:?}, URD: {:?}, URDL: {:?}", get_coords(mv!(U)), get_coords(mv!(U R)), get_coords(mv!(U R D)), get_coords(mv!(U R D L)));
                 }
             }
             trying! {
                 if idx == mv!(L D R U) && mv!(L D R U) == mv!(D L U R) {
                     self.triangles.push(Triangle::new(idx, mv!(L), mv!(D)));
                 } else {
-                    dbg!(get_coords(idx), get_coords(mv!(L D R U)), get_coords(mv!(D L U R)));
+                    // eprintln!("TR_LD, idx: {:?}, LDRU: {:?}, DLUR: {:?}", get_coords(idx), get_coords(mv!(L D R U)), get_coords(mv!(D L U R)));
+                    // eprintln!("L: {:?}, LD: {:?}, LDR: {:?}, LDRU: {:?}", get_coords(mv!(L)), get_coords(mv!(L D)), get_coords(mv!(L D R)), get_coords(mv!(L D R U)));
                 }
             }
         }
@@ -496,18 +805,19 @@ impl Mesh {
             let mut index = 0;
             let mut push = |uv: &(usize, usize)| {
                 self.uv_buffer[index] = uv.0 as f32 / (sizex - 1) as f32;
-                self.uv_buffer[index+1] = uv.1 as f32 / (sizey - 1) as f32;
+                self.uv_buffer[index + 1] = uv.1 as f32 / (sizey - 1) as f32;
                 index += 2;
             };
-            for (tr_pos, triangle) in self.triangles.iter().enumerate() {
+            for triangle in self.triangles.iter() {
                 let mut found = false;
-                'top: for uv1 in &space_graph[triangle.indices[0]].uv {
-                    for uv2 in &space_graph[triangle.indices[1]].uv {
-                        for uv3 in &space_graph[triangle.indices[2]].uv {
+                'top: for uv1 in &space_graph.graph[triangle.indices[0]].uv {
+                    for uv2 in &space_graph.graph[triangle.indices[1]].uv {
+                        for uv3 in &space_graph.graph[triangle.indices[2]].uv {
                             // first type of triangle
-                            if 
-                                uv1.0 + 1 == uv2.0 && uv1.1 == uv2.1 &&
-                                uv1.1 + 1 == uv3.1 && uv1.0 == uv3.0
+                            if uv1.0 + 1 == uv2.0
+                                && uv1.1 == uv2.1
+                                && uv1.1 + 1 == uv3.1
+                                && uv1.0 == uv3.0
                             {
                                 push(uv1);
                                 push(uv2);
@@ -517,9 +827,10 @@ impl Mesh {
                             }
 
                             // second type of triangle
-                            if 
-                                uv2.0 + 1 == uv1.0 && uv2.1 == uv1.1 &&
-                                uv3.1 + 1 == uv1.1 && uv3.0 == uv1.0
+                            if uv2.0 + 1 == uv1.0
+                                && uv2.1 == uv1.1
+                                && uv3.1 + 1 == uv1.1
+                                && uv3.0 == uv1.0
                             {
                                 push(uv1);
                                 push(uv2);
@@ -531,7 +842,15 @@ impl Mesh {
                     }
                 }
                 if !found {
-                    dbg!(tr_pos, triangle, &space_graph[triangle.indices[0]].uv, &space_graph[triangle.indices[1]].uv, &space_graph[triangle.indices[2]].uv);
+                    push(&(0, 0));
+                    push(&(0, 0));
+                    push(&(0, 0));
+
+                    // dbg!(get_coords(triangle.indices[0]));
+                    // dbg!(get_coords(triangle.indices[1]));
+                    // dbg!(get_coords(triangle.indices[2]));
+                    // dbg!(triangle, &space_graph.graph[triangle.indices[0]].uv, &space_graph.graph[triangle.indices[1]].uv, &space_graph.graph[triangle.indices[2]].uv);
+                    // dbg!("-------------------------------------------------");
                     // panic!();
                 }
             }
@@ -541,7 +860,7 @@ impl Mesh {
         for particle in &mut self.particles {
             let x = particle.position.x - sizex as fxx / (sizea - 1) as fxx / 2.;
             let y = particle.position.y - sizey as fxx / (sizea - 1) as fxx / 2.;
-            particle.position.z -= (x*x + y*y).sqrt() * 0.05;
+            particle.position.z -= (x * x + y * y).sqrt() * 0.05;
         }
 
         // Initialize the triangle buffer
@@ -788,15 +1107,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test() {
+    fn basic() {
         let mut mesh = Mesh::new();
-        mesh.init(20, 20, "portal1");
+        mesh.init(50, 50, "portal2");
         mesh.step();
         mesh.step();
         mesh.step();
         mesh.step();
         mesh.get_constants();
+        // panic!();
+    }
 
-        panic!();
+    #[test]
+    fn same_graph() {
+        let mut graph1 = SpaceGraph::new(50, 50);
+        graph1.make_portal1_scene();
+
+        let mut graph2 = SpaceGraph::new(50, 50);
+        graph2.make_portal2_scene();
+
+        assert!(graph1.is_equal_to(&graph2));
     }
 }
