@@ -25,6 +25,8 @@
 <script src="js/dat.gui.min.js"></script>
 <script src="js/OrbitControls.js"></script>
 
+<script id="fragment-shader" type="x-shader/x-fragment" src="fragment.glsl"></script>
+
 <script type="module">
 import init, { MeshHandle } from './wasm/pkg/wasm.js';
 
@@ -45,7 +47,8 @@ const constants = {
     iterations: 1
 };
 
-let texture = null;
+let material = null;
+let fragmentShader = null;
 
 const guidata = {
     run_simulation: false,
@@ -53,7 +56,8 @@ const guidata = {
     useFlatMesh: false,
     ratio: 1. / 3.,
     size: 20,
-    textureSize: 512,
+    anim: 0.5,
+    drawPortalSurface: true,
 };
 
 function size_x(size) {
@@ -68,27 +72,23 @@ function createMesh(skipScene) {
         if (guidata.scene == "portal1") {
             guidata.ratio = 1.;
             guidata.size = 50;
-            texture = calcTexturePortal1();
         }
         if (guidata.scene == "cylinder") {
             guidata.ratio = 2.;
             guidata.size = 20;
-            texture = calcTextureCylinder();
         }
         if (guidata.scene == "torus") {
             guidata.ratio = 3.;
             guidata.size = 15;
-            texture = calcTextureTorus();
         }
         if (guidata.scene == "flat") {
             guidata.ratio = 1.;
             guidata.size = 10;
-            texture = calcTextureFlat();
         }
     }
 
     meshHandle = new MeshHandle(size_x(guidata.size) + 1, size_y(guidata.size) + 1, guidata.useFlatMesh ? "flat" : guidata.scene);
-    createMeshObject(texture);
+    createMeshObject();
     for (const name in constants) {
       meshHandle.set_constant(name, constants[name]);
     }
@@ -96,6 +96,8 @@ function createMesh(skipScene) {
 
 // Initialize everything
 async function init2() {
+    fragmentShader = await loadShaderFromScript('fragment-shader');
+
     try {
         // Load WASM module
         const wasmModule = await init('./wasm/pkg/wasm_bg.wasm');
@@ -144,10 +146,33 @@ async function init2() {
     }
 }
 
+function loadShaderFromScript(id) {
+    const script = document.getElementById(id);
+
+    if (!script) {
+      throw new Error(`Could not find shader script with id: ${id}`);
+    }
+
+    // If the shader is in an external file referenced by src attribute
+    if (script.src) {
+      return fetch(script.src)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Failed to load shader from ${script.src}`);
+          }
+          return response.text();
+        });
+    }
+
+    // If the shader is inline in the script tag
+    return Promise.resolve(script.textContent);
+}
+
 // Declare a variable to hold the UV attribute
 let uvAttribute;
 
-function createMeshObject(texture) {
+// Updated material creation function that generates textures in the shader
+function createMeshObject() {
     // Remove existing mesh object if any
     if (meshObject) {
         scene.remove(meshObject);
@@ -155,11 +180,19 @@ function createMeshObject(texture) {
     
     // Create a new geometry and material
     const geometry = new THREE.BufferGeometry();
-    // Create a custom shader material with texture support
-    const material = new THREE.ShaderMaterial({
+    
+    // Convert scene name to numeric value for the shader
+    const sceneTypeValue = getSceneTypeValue();
+    
+    // Create a custom shader material with procedural texture
+    material = new THREE.ShaderMaterial({
       uniforms: {
-        baseTexture: { value: texture }, // Your existing texture
-        darknessFactor: { value: 0.5 }   // How much to darken at maximum angle
+        sceneType: { value: sceneTypeValue },
+        aspectRatio: { value: guidata.ratio },
+        size: { value: guidata.size },
+        darknessFactor: { value: 0.5 },
+        anim: { value: guidata.anim },
+        drawPortalSurface: { value: guidata.drawPortalSurface + 0 },
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -180,33 +213,7 @@ function createMeshObject(texture) {
           gl_Position = projectionMatrix * mvPosition;
         }
       `,
-      fragmentShader: `
-        uniform sampler2D baseTexture;
-        uniform float darknessFactor;
-        
-        varying vec3 vNormal;
-        varying vec3 vViewPosition;
-        varying vec2 vUv;
-        
-        void main() {
-          // Sample the texture using UV coordinates
-          vec4 texColor = texture2D(baseTexture, vUv);
-          
-          // Normalize the view direction
-          vec3 viewDir = normalize(vViewPosition);
-          
-          // Calculate the dot product between normal and view direction
-          float dotNV = max(0.0, abs(dot(vNormal, viewDir)));
-          
-          // Calculate darkness based on the angle
-          float darkness = (1.0 - dotNV) * darknessFactor;
-          
-          // Apply darkness to the texture color
-          vec3 finalColor = texColor.rgb * (1.0 - darkness);
-          
-          gl_FragColor = vec4(finalColor, texColor.a);
-        }
-      `,
+      fragmentShader: fragmentShader,
       side: THREE.DoubleSide
     });
     
@@ -251,6 +258,17 @@ function createMeshObject(texture) {
     scene.add(meshObject);
 }
 
+// Helper function to convert scene name to value for the shader
+function getSceneTypeValue() {
+    switch(guidata.scene) {
+        case "portal1": return 0;
+        case "cylinder": return 1;
+        case "torus": return 2;
+        case "flat": return 3;
+        default: return 0;
+    }
+}
+
 function updateMeshObject() {
     try {
         // Get the latest triangle data from WASM
@@ -287,9 +305,6 @@ function updateMeshObject() {
         positionAttribute.needsUpdate = true;
         uvAttribute.needsUpdate = true;
         
-        // Update the texture if canvas has changed
-        texture.needsUpdate = true;
-        
         // Compute normals for proper lighting
         meshObject.geometry.computeVertexNormals();
     } catch (error) {
@@ -322,8 +337,13 @@ function setupGUI() {
     gui3.add(guidata, "size", 1, 100, 1).listen().onFinishChange(value => {
         createMesh(true);
     });
-    gui3.add(guidata, "textureSize").listen().onFinishChange(value => {
-        createMesh(true);
+
+    gui3.add(guidata, "anim", -1., 1, 0.01).listen().onChange(value => {
+        material.uniforms.anim.value = value;
+    });
+
+    gui3.add(guidata, "drawPortalSurface").listen().onChange(value => {
+        material.uniforms.drawPortalSurface.value = value + 0;
     });
 
     const gui2 = gui.addFolder("Physics params");
@@ -383,383 +403,6 @@ function animate() {
     } catch (error) {
         console.error("Error in animation loop:", error);
     }
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
-// TextureCreator class for creating and manipulating textures for three.js
-class TextureCreator {
-  constructor() {
-    this.canvas = null;
-    this.ctx = null;
-    this.width = 0;
-    this.height = 0;
-    this.imageData = null;
-  }
-
-  /**
-   * Initialize texture with specific dimensions
-   * @param {number} w - Width of the texture
-   * @param {number} h - Height of the texture
-   */
-  init(w, h) {
-    this.width = w;
-    this.height = h;
-    this.size = Math.min(w, h);
-    
-    // Create canvas if it doesn't exist
-    if (!this.canvas) {
-      this.canvas = document.createElement('canvas');
-    }
-    
-    this.canvas.width = w;
-    this.canvas.height = h;
-    this.ctx = this.canvas.getContext('2d');
-    
-    // Clear canvas
-    this.ctx.clearRect(0, 0, w, h);
-    
-    // Create initial imageData
-    this.imageData = this.ctx.getImageData(0, 0, w, h);
-  }
-
-  /**
-   * Draw on the texture using a function that returns RGBA values
-   * @param {Function} func - Function that takes (x, y) and returns [r, g, b, a]
-   */
-  draw(func) {
-    const data = this.imageData.data;
-    
-    // 2x2 subpixel grid offsets for antialiasing
-    const subpixelOffsets = [
-      [0.25, 0.25], // top-left
-      [0.75, 0.25], // top-right
-      [0.25, 0.75], // bottom-left
-      [0.75, 0.75]  // bottom-right
-    ];
-    
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        // Calculate index in the image data array
-        const idx = (y * this.width + x) * 4;
-        
-        // Sample 4 subpixels and average them
-        let sumR = 0, sumG = 0, sumB = 0, sumA = 0;
-        
-        for (const [offX, offY] of subpixelOffsets) {
-          // Normalize coordinates to 0-1 range with subpixel offset
-          const nx = (x + offX) / this.size;
-          const ny = (y + offY) / this.size;
-          
-          // Get rgba values from the function (0-255 range)
-          const [r, g, b, a] = func(nx, ny);
-          
-          // Convert alpha to 0-1 range
-          const alpha = a / 255;
-          
-          // Accumulate values (premultiplied by alpha)
-          sumR += r * alpha;
-          sumG += g * alpha;
-          sumB += b * alpha;
-          sumA += alpha;
-        }
-        
-        // Average the accumulated values
-        sumR /= 4;
-        sumG /= 4;
-        sumB /= 4;
-        sumA /= 4;
-        
-        // Get current pixel values
-        const dstR = data[idx];
-        const dstG = data[idx + 1];
-        const dstB = data[idx + 2];
-        const dstA = data[idx + 3] / 255;
-        
-        // Apply standard alpha blending
-        const outA = sumA + dstA * (1 - sumA);
-        
-        if (outA > 0) {
-          data[idx] = (sumR + dstR * dstA * (1 - sumA)) / outA;
-          data[idx + 1] = (sumG + dstG * dstA * (1 - sumA)) / outA;
-          data[idx + 2] = (sumB + dstB * dstA * (1 - sumA)) / outA;
-        } else {
-          data[idx] = 0;
-          data[idx + 1] = 0;
-          data[idx + 2] = 0;
-        }
-        
-        data[idx + 3] = Math.round(outA * 255);
-      }
-    }
-    
-    // Put the modified image data back to the canvas
-    this.ctx.putImageData(this.imageData, 0, 0);
-  }
-
-  /**
-   * Return the texture in a format compatible with three.js
-   * @returns {THREE.Texture} - three.js texture
-   */
-  getTexture() {
-    const texture = new THREE.CanvasTexture(this.canvas);
-    texture.needsUpdate = true;
-    return texture;
-  }
-
-  /**
-   * Draw a circle at specified position with given radius and color
-   * @param {number} cx - Center x-coordinate (0-1)
-   * @param {number} cy - Center y-coordinate (0-1)
-   * @param {number} radius - Radius (0-1)
-   * @param {Array} color - [r, g, b, a] color values (0-255)
-   */
-  drawCircle(cx, cy, radius, color) {
-    this.draw((x, y) => {
-      // Calculate distance from center
-      const dx = x - cx;
-      const dy = y - cy;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // If inside circle, return the color
-      if (distance <= radius) {
-        return color;
-      }
-      
-      // Otherwise, return transparent
-      return [0, 0, 0, 0];
-    });
-  }
-
-  /**
-   * Draw a line between two points with specified thickness
-   * @param {number} x1 - Start x-coordinate (0-1)
-   * @param {number} y1 - Start y-coordinate (0-1)
-   * @param {number} x2 - End x-coordinate (0-1)
-   * @param {number} y2 - End y-coordinate (0-1)
-   * @param {number} thickness - Line thickness (0-1)
-   * @param {Array} color - [r, g, b, a] color values (0-255)
-   */
-  drawLine(x1, y1, x2, y2, thickness, color) {
-    this.draw((x, y) => {
-      // Line SDF (Signed Distance Function)
-      // Calculate distance from point to line segment
-      const a = { x: x1, y: y1 };
-      const b = { x: x2, y: y2 };
-      const p = { x, y };
-      
-      const ab = { x: b.x - a.x, y: b.y - a.y };
-      const ap = { x: p.x - a.x, y: p.y - a.y };
-      
-      const lenSq = ab.x * ab.x + ab.y * ab.y;
-      const dot = ap.x * ab.x + ap.y * ab.y;
-      let t = Math.max(0, Math.min(1, dot / lenSq));
-      
-      const closest = {
-        x: a.x + ab.x * t,
-        y: a.y + ab.y * t
-      };
-      
-      const dx = x - closest.x;
-      const dy = y - closest.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // If inside the line (distance less than half the thickness)
-      if (distance <= thickness / 2) {
-        return color;
-      }
-      
-      // Otherwise, return transparent
-      return [0, 0, 0, 0];
-    });
-  }
-
-  /**
-   * Draw a rotated square at specified position with given side size and rotation
-   * @param {number} cx - Center x-coordinate (0-1)
-   * @param {number} cy - Center y-coordinate (0-1)
-   * @param {number} size - Side size (0-1)
-   * @param {number} angle - Rotation angle in radians
-   * @param {Array} color - [r, g, b, a] color values (0-255)
-   */
-  drawRotatedSquare(cx, cy, size, angle, color, discard) {
-    this.draw((x, y) => {
-      if (discard(x, y)) return [0, 0, 0, 0];
-
-      // Translate to origin
-      const dx = x - cx;
-      const dy = y - cy;
-      
-      // Rotate
-      const cos = Math.cos(-angle);
-      const sin = Math.sin(-angle);
-      const rx = dx * cos - dy * sin;
-      const ry = dx * sin + dy * cos;
-      
-      // Half size for easier calculation
-      const halfSize = size / 2;
-      
-      // If inside square
-      if (Math.abs(rx) <= halfSize && Math.abs(ry) <= halfSize) {
-        return color;
-      }
-      
-      // Otherwise, return transparent
-      return [0, 0, 0, 0];
-    });
-  }
-
-  /**
-   * Draw an infinite checkerboard pattern
-   * @param {number} tileSize - Size of each tile (0-1)
-   * @param {Array} color1 - First color [r, g, b, a] (0-255)
-   * @param {Array} color2 - Second color [r, g, b, a] (0-255)
-   */
-  drawCheckerboard(tileSize, color1, color2) {
-    this.draw((x, y) => {
-      // Scale coordinates to create tiles of the specified size
-      const tiledX = Math.floor(x / tileSize);
-      const tiledY = Math.floor(y / tileSize);
-      
-      // Determine if this tile should be color1 or color2
-      const isEven = (tiledX + tiledY) % 2 === 0;
-      
-      return isEven ? color1 : color2;
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
-let blueColor = [9, 164, 201, 255];
-let orangeColor = [237, 108, 13, 255];
-let redColor = [136, 0, 21, 255];
-let greenColor = [181, 230, 29, 255];
-let noDiscard = (x, y) => { return false; };
-
-function calcTexturePortal1() {
-    let blueX = 0.2;
-    let orangeX = 0.8;
-    let startY = 0.4;
-    let endY = 0.6;
-
-    let thickness = 0.005;
-
-    let discardBlueLeft = (x, y) => { return x > blueX; };
-    let discardBlueRight = (x, y) => { return x < blueX; };
-    let discardOrangeLeft = (x, y) => { return x > orangeX; };
-    let discardOrangeRight = (x, y) => { return x < orangeX; };
-
-    const textureCreator = new TextureCreator();
-
-    textureCreator.init(size_x(guidata.textureSize), size_y(guidata.textureSize));
-
-    textureCreator.drawCheckerboard(0.1, [255, 255, 255, 255], [255, 255, 255, 255]);
-    textureCreator.drawCheckerboard(1. / guidata.size, [255, 255, 255, 40], [0, 0, 0, 40]);
-
-
-    let sq1Size = 0.1;
-    let sq1Angle = Math.PI/4;
-    let sq1Color = [0, 255, 0, 192];
-    textureCreator.drawRotatedSquare(blueX, (startY + endY) / 2., sq1Size, sq1Angle, sq1Color, discardBlueLeft);
-    textureCreator.drawRotatedSquare(orangeX, (startY + endY) / 2., sq1Size, sq1Angle, sq1Color, discardOrangeRight);
-
-    let sq2Size = 0.09;
-    let sq2Angle = Math.PI/3;
-    let sq2Color = [128, 128, 255, 192];
-    textureCreator.drawRotatedSquare(blueX-0.02, (startY + endY) / 2. + 0.01, sq2Size, sq2Angle, sq2Color, discardBlueRight);
-    textureCreator.drawRotatedSquare(orangeX-0.02, (startY + endY) / 2. + 0.01, sq2Size, sq2Angle, sq2Color, discardOrangeLeft);
-
-    let blueColor = [9, 164, 201, 255];
-    textureCreator.drawCircle(blueX, startY, thickness * 1.5, blueColor);
-    textureCreator.drawCircle(blueX, endY, thickness * 1.5, blueColor);
-    textureCreator.drawLine(blueX, startY, blueX, endY, thickness, blueColor);
-
-    let orangeColor = [237, 108, 13, 255];
-    textureCreator.drawCircle(orangeX, startY, thickness * 1.5, orangeColor);
-    textureCreator.drawCircle(orangeX, endY, thickness * 1.5, orangeColor);
-    textureCreator.drawLine(orangeX, startY, orangeX, endY, thickness, orangeColor);
-
-    const texture = textureCreator.getTexture();
-    return texture;
-}
-
-function calcTextureCylinder() {
-    let thickness = 0.02;
-
-    const textureCreator = new TextureCreator();
-
-    textureCreator.init(size_x(guidata.textureSize), size_y(guidata.textureSize));
-
-    textureCreator.drawCheckerboard(0.1, [255, 255, 255, 255], [255, 255, 255, 255]);
-    textureCreator.drawCheckerboard(1. / size_y(guidata.size), [255, 255, 255, 40], [0, 0, 0, 40]);
-
-    let sq1Size = 0.3;
-    let sq1Angle = Math.PI/3;
-    let sq1Color = [0, 255, 0, 192];
-    textureCreator.drawRotatedSquare(2., 0.4, sq1Size, sq1Angle, sq1Color, noDiscard);
-    textureCreator.drawRotatedSquare(0, 0.4, sq1Size, sq1Angle, sq1Color, noDiscard);
-
-    let sq2Size = 0.4;
-    let sq2Angle = Math.PI/1.5;
-    let sq2Color = [128, 128, 255, 192];
-    textureCreator.drawRotatedSquare(0.7, 0.9, sq2Size, sq2Angle, sq2Color, noDiscard);
-
-    textureCreator.drawLine(0., 0., 0., 1., thickness, blueColor);
-    textureCreator.drawLine(2., 0., 2., 1., thickness, orangeColor);
-
-    const texture = textureCreator.getTexture();
-    return texture;
-}
-
-function calcTextureTorus() {
-    let thickness = 0.02;
-
-    const textureCreator = new TextureCreator();
-
-    textureCreator.init(size_x(guidata.textureSize), size_y(guidata.textureSize));
-
-    textureCreator.drawCheckerboard(0.1, [255, 255, 255, 255], [255, 255, 255, 255]);
-    textureCreator.drawCheckerboard(1. / size_y(guidata.size), [255, 255, 255, 40], [0, 0, 0, 40]);
-
-    let sq1Size = 0.3;
-    let sq1Angle = Math.PI/3;
-    let sq1Color = [0, 255, 0, 192];
-    textureCreator.drawRotatedSquare(3., 0.4, sq1Size, sq1Angle, sq1Color, noDiscard);
-    textureCreator.drawRotatedSquare(0, 0.4, sq1Size, sq1Angle, sq1Color, noDiscard);
-
-    let sq2Size = 0.4;
-    let sq2Angle = Math.PI/1.5;
-    let sq2Color = [128, 128, 255, 192];
-    textureCreator.drawRotatedSquare(0.7, 0.9, sq2Size, sq2Angle, sq2Color, noDiscard);
-    textureCreator.drawRotatedSquare(0.7, -0.1, sq2Size, sq2Angle, sq2Color, noDiscard);
-
-    textureCreator.drawLine(0., 0., 0., 1., thickness, blueColor);
-    textureCreator.drawLine(3., 0., 3., 1., thickness, orangeColor);
-
-    textureCreator.drawLine(0., 0., 3., 0., thickness, redColor);
-    textureCreator.drawLine(0., 1., 3., 1., thickness, greenColor);
-
-    const texture = textureCreator.getTexture();
-    return texture;
-}
-
-function calcTextureFlat() {
-    let thickness = 0.02;
-
-    const textureCreator = new TextureCreator();
-
-    textureCreator.init(size_x(guidata.textureSize), size_y(guidata.textureSize));
-
-    textureCreator.drawCheckerboard(0.1, [255, 255, 255, 255], [255, 255, 255, 255]);
-    textureCreator.drawCheckerboard(1. / size_y(guidata.size), [255, 255, 255, 40], [0, 0, 0, 40]);
-
-    const texture = textureCreator.getTexture();
-    return texture;
 }
 
 // Start the application
