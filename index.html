@@ -59,6 +59,8 @@ const guidata = {
     anim: 0.5,
     drawPortalSurface: true,
     drawUv: false,
+    animUseTime: true,
+    timeSpeed: 0.5,
 };
 
 function size_x(size) {
@@ -72,8 +74,8 @@ function createMesh(skipScene) {
     if (!skipScene) {
         if (guidata.scene == "portal1") {
             guidata.ratio = 1.;
-            guidata.size = 100;
-            constants.iterations = 1;
+            guidata.size = 50;
+            constants.iterations = 3;
         }
         if (guidata.scene == "cylinder") {
             guidata.ratio = 2.;
@@ -92,8 +94,8 @@ function createMesh(skipScene) {
         }
         if (guidata.scene == "portal2") {
             guidata.ratio = 1.;
-            guidata.size = 100;
-            constants.iterations = 1;
+            guidata.size = 50;
+            constants.iterations = 3;
         }
     }
 
@@ -338,9 +340,7 @@ function setupGUI() {
         createMesh(false);
     });
 
-    gui.add(guidata, "anim", -1., 1, 0.01).listen().onChange(value => {
-        material.uniforms.anim.value = value;
-    });
+    
 
     gui.add(guidata, "drawPortalSurface").listen().onChange(value => {
         material.uniforms.drawPortalSurface.value = value + 0;
@@ -350,12 +350,21 @@ function setupGUI() {
         material.uniforms.drawUv.value = value + 0;
     });
 
+    gui.add(guidata, "useFlatMesh").listen().onChange(value => {
+        createMesh(true);
+    });
+
     const gui3 = gui.addFolder("Scene params");
     gui3.close();
 
-    gui3.add(guidata, "useFlatMesh").listen().onChange(value => {
-        createMesh(true);
+    gui3.add(guidata, "anim", 0., 1, 0.01).listen().onChange(value => {
+        material.uniforms.anim.value = value;
     });
+
+    gui3.add(guidata, "animUseTime");
+
+    gui3.add(guidata, "timeSpeed", 0., 5., 0.1);
+
     gui3.add(guidata, "ratio").listen().onFinishChange(value => {
         createMesh(true);
     });
@@ -412,6 +421,11 @@ function animate() {
                 meshHandle.step();
             }
             updateMeshObject();
+        }
+
+        if (guidata.animUseTime) {
+            guidata.anim = (Date.now() / 1000. * guidata.timeSpeed) % 1.;
+            material.uniforms.anim.value = guidata.anim;
         }
         
         // Update controls and render

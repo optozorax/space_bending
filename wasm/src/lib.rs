@@ -111,11 +111,11 @@ pub struct DihedralSpring {
     pub i2: usize, // Second edge point
     pub i3: usize, // First wing point
     pub i4: usize, // Second wing point
-    pub force: f64,
+    pub force: fxx,
 }
 
 impl DihedralSpring {
-    pub fn new_full(i1: usize, i2: usize, i3: usize, i4: usize, force: f64) -> Self {
+    pub fn new_full(i1: usize, i2: usize, i3: usize, i4: usize, force: fxx) -> Self {
         Self {
             i1,
             i2,
@@ -126,23 +126,15 @@ impl DihedralSpring {
     }
 
     pub fn new(i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
-        Self {
-            i1,
-            i2,
-            i3,
-            i4,
-            force: 1.0,
-        }
+        Self::new_full(i1, i2, i3, i4, 1.0)
     }
 
     pub fn new2(i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
-        Self {
-            i1,
-            i2,
-            i3,
-            i4,
-            force: 0.25,
-        }
+        Self::new_full(i1, i2, i3, i4, 0.25)
+    }
+
+    pub fn new3(i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
+        Self::new_full(i1, i2, i3, i4, 0.1)
     }
 }
 
@@ -752,27 +744,47 @@ impl Mesh {
                 }};
             }
 
+            macro_rules! edge_spring {
+                ($($data:tt)*) => {
+                    trying! { self.edge_springs.push(EdgeSpring::new($($data)*)); }
+                };
+            }
+
+            macro_rules! dihedral_spring {
+                ($type:tt, $($data:tt)*) => {
+                    trying! { self.dihedral_springs.push(DihedralSpring::$type($($data)*)); }
+                };
+            }
+
             // Add springs
-            trying! { self.edge_springs.push(EdgeSpring::new(idx, mv!(R), regular_len)); }
-            trying! { self.edge_springs.push(EdgeSpring::new(idx, mv!(U), regular_len)); }
-            trying! { self.edge_springs.push(EdgeSpring::new(idx, mv!(R U), diagonal_len)); }
-            trying! { self.edge_springs.push(EdgeSpring::new(idx, mv!(R D), diagonal_len)); }
+            edge_spring!(idx, mv!(R), regular_len);
+            edge_spring!(idx, mv!(U), regular_len);
+            edge_spring!(idx, mv!(R U), diagonal_len);
+            edge_spring!(mv!(R), mv!(U), diagonal_len);
 
             // Add dihedral springs of distance 1
-            trying! { self.dihedral_springs.push(DihedralSpring::new(idx, mv!(U), mv!(R), mv!(U L))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new(idx, mv!(U), mv!(L), mv!(U R))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new(idx, mv!(R), mv!(D), mv!(R U))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new(idx, mv!(R), mv!(U), mv!(R D))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new(mv!(R), mv!(U), idx, mv!(R U))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new(idx, mv!(R U), mv!(R), mv!(U))); }
+            dihedral_spring!(new, idx, mv!(U), mv!(R), mv!(U L));
+            dihedral_spring!(new, idx, mv!(U), mv!(L), mv!(U R));
+            dihedral_spring!(new, idx, mv!(R), mv!(D), mv!(R U));
+            dihedral_spring!(new, idx, mv!(R), mv!(U), mv!(R D));
+            dihedral_spring!(new, mv!(R), mv!(U), idx, mv!(R U));
+            dihedral_spring!(new, idx, mv!(R U), mv!(R), mv!(U));
 
             // Add dihedral springs of distance 2
-            trying! { self.dihedral_springs.push(DihedralSpring::new2(idx, mv!(U), mv!(R R), mv!(U L L))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new2(idx, mv!(U), mv!(L L), mv!(U L L))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new2(idx, mv!(R), mv!(D D), mv!(R U U))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new2(idx, mv!(R), mv!(U U), mv!(R D D))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new2(mv!(R), mv!(U), mv!(L D), mv!(R U R U))); }
-            trying! { self.dihedral_springs.push(DihedralSpring::new2(idx, mv!(R U), mv!(R R D), mv!(U U L))); }
+            dihedral_spring!(new2, idx, mv!(U), mv!(R R), mv!(U L L));
+            dihedral_spring!(new2, idx, mv!(U), mv!(L L), mv!(U L L));
+            dihedral_spring!(new2, idx, mv!(R), mv!(D D), mv!(R U U));
+            dihedral_spring!(new2, idx, mv!(R), mv!(U U), mv!(R D D));
+            dihedral_spring!(new2, mv!(R), mv!(U), mv!(L D), mv!(R U R U));
+            dihedral_spring!(new2, idx, mv!(R U), mv!(R R D), mv!(U U L));
+
+            // Add dihedral springs of distance 3
+            dihedral_spring!(new3, idx, mv!(U), mv!(R R R), mv!(U L L L));
+            dihedral_spring!(new3, idx, mv!(U), mv!(L L L), mv!(U L L L));
+            dihedral_spring!(new3, idx, mv!(R), mv!(D D D), mv!(R U U U));
+            dihedral_spring!(new3, idx, mv!(R), mv!(U U U), mv!(R D D D));
+            dihedral_spring!(new3, idx, mv!(R U), mv!(R R D), mv!(U U L));
+            dihedral_spring!(new3, mv!(R), mv!(U), mv!(L D L D), mv!(R U R U R U));
 
             // Add triangles for drawing
             trying! {
