@@ -44,7 +44,7 @@ const constants = {
     dihedralSpringConstant: 50,
     dampingCoefficient: 1.5,
     globalDamping: 0.5,
-    iterations: 2
+    iterations: 1
 };
 
 let material = null;
@@ -52,7 +52,7 @@ let fragmentShader = null;
 
 const guidata = {
     run_simulation: false,
-    scene: "portal2",
+    scene: "portal1",
     useFlatMesh: false,
     ratio: 1. / 3.,
     size: 20,
@@ -72,23 +72,28 @@ function createMesh(skipScene) {
     if (!skipScene) {
         if (guidata.scene == "portal1") {
             guidata.ratio = 1.;
-            guidata.size = 50;
+            guidata.size = 100;
+            constants.iterations = 1;
         }
         if (guidata.scene == "cylinder") {
             guidata.ratio = 2.;
             guidata.size = 20;
+            constants.iterations = 2;
         }
         if (guidata.scene == "torus") {
             guidata.ratio = 3.;
             guidata.size = 15;
+            constants.iterations = 2;
         }
         if (guidata.scene == "flat") {
             guidata.ratio = 1.;
             guidata.size = 10;
+            constants.iterations = 2;
         }
         if (guidata.scene == "portal2") {
             guidata.ratio = 1.;
-            guidata.size = 50;
+            guidata.size = 100;
+            constants.iterations = 1;
         }
     }
 
