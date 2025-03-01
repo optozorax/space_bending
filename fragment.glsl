@@ -30,6 +30,10 @@ vec2 adjustUV(vec2 uv) {
     return adjusted;
 }
 
+float easing_in_out(float t) {
+    return (1.0 - cos(t * 3.14159)) * 0.5;
+}
+
 // SDF (Signed Distance Field) functions
 float circleSDF(vec2 p, vec2 center, float radius) {
     return length(p - center) - radius;
@@ -107,20 +111,22 @@ vec4 drawPortal1Scene(vec2 uv, float offset) {
     result = alphaBlend(checker2, result);
     
     // Draw green squares
+    float anim_easing = easing_in_out(anim * 2.) * 2. - 1.;
+
     float sq1Size = 0.1;
-    float sq1Angle = 3.14159 / 4.0 + anim;
+    float sq1Angle = 3.14159 / 4.0 + anim_easing;
     vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
     
     // Only draw if uv.x is less than center.x (discardRight = true)
     if (uv.x <= blueX-offset) {
-        vec4 square1 = drawRotatedSquare(uv, vec2(blueX + anim*0.1, (startY + endY) / 2.0), 
+        vec4 square1 = drawRotatedSquare(uv, vec2(blueX + anim_easing * 0.13, (startY + endY) / 2.0), 
                                         sq1Size, sq1Angle, sq1Color);
         result = alphaBlend(square1, result);
     }
     
     // Only draw if uv.x is greater than center.x (discardLeft = true)
     if (uv.x >= orangeX-offset) {
-        vec4 square2 = drawRotatedSquare(uv, vec2(orangeX + anim*0.1, (startY + endY) / 2.0), 
+        vec4 square2 = drawRotatedSquare(uv, vec2(orangeX + anim_easing * 0.13, (startY + endY) / 2.0), 
                                         sq1Size, sq1Angle, sq1Color);
         result = alphaBlend(square2, result);
     }
@@ -129,17 +135,19 @@ vec4 drawPortal1Scene(vec2 uv, float offset) {
     float sq2Size = 0.09;
     float sq2Angle = 3.14159 / 3.0;
     vec4 sq2Color = vec4(128.0/255.0, 128.0/255.0, 1.0, 192.0/255.0);
+
+    float anim_2 = anim * 2. - 1.;
     
     // Only draw if uv.x is greater than center.x (discardLeft = true)
     if (uv.x >= blueX-offset) {
-        vec4 square3 = drawRotatedSquare(uv, vec2(blueX - 0.02 - anim*0.3, (startY + endY) / 2.0 + 0.01), 
+        vec4 square3 = drawRotatedSquare(uv, vec2(blueX - 0.02 - anim_2*0.3, (startY + endY) / 2.0 + 0.01), 
                                         sq2Size, sq2Angle, sq2Color);
         result = alphaBlend(square3, result);
     }
     
     // Only draw if uv.x is less than center.x (discardRight = true)
     if (uv.x <= orangeX-offset) {
-        vec4 square4 = drawRotatedSquare(uv, vec2(orangeX - 0.02 - anim*0.3, (startY + endY) / 2.0 + 0.01), 
+        vec4 square4 = drawRotatedSquare(uv, vec2(orangeX - 0.02 - anim_2*0.3, (startY + endY) / 2.0 + 0.01), 
                                         sq2Size, sq2Angle, sq2Color);
         result = alphaBlend(square4, result);
     }
