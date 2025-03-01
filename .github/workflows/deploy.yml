@@ -2,10 +2,10 @@ name: Build and Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ master ]  # Change to your master branch name if different (e.g., master)
+    branches: [ master ]
   pull_request:
     branches: [ master ]
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -32,6 +32,7 @@ jobs:
         run: |
           cd wasm
           wasm-pack build --target web --release
+          cd ..
           
       - name: Prepare deployment
         run: |
@@ -40,10 +41,12 @@ jobs:
           cp fragment.glsl dist/
           cp -r js dist/
           mkdir -p dist/wasm
-          cp -r wasm/pkg dist/wasm/
+          mkdir -p dist/wasm/pkg
+          cp -r wasm/pkg/wasm.js dist/wasm/pkg
+          cp -r wasm/pkg/wasm_bg.wasm dist/wasm/pkg
           
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: dist # The folder the action should deploy
-          branch: gh-pages # The branch the action should deploy to
+          folder: dist
+          branch: gh-pages
