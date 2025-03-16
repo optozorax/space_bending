@@ -18,6 +18,7 @@ const vec4 greenColor = vec4(181.0/255.0, 230.0/255.0, 29.0/255.0, 1.0);
 const vec4 whiteColor = vec4(1.0, 1.0, 1.0, 1.0);
 const vec4 checkerWhite = vec4(1.0, 1.0, 1.0, 40.0/255.0);
 const vec4 checkerBlack = vec4(0.0, 0.0, 0.0, 40.0/255.0);
+const vec4 blackColor = vec4(0., 0., 0., 1.0);
 
 // Convert UV coordinates based on aspect ratio
 vec2 adjustUV(vec2 uv) {
@@ -295,6 +296,35 @@ vec4 drawFlatScene(vec2 uv) {
     // Draw checkerboard patterns
     vec4 checker2 = drawCheckerboard(uv, 1.0 / size, checkerWhite, checkerBlack);
     result = alphaBlend(checker2, result);
+
+    float blackX = 0.5;
+    float startY = 0.4;
+    float endY = 0.6;
+    float thickness = 0.005;
+
+    // Draw green squares
+    float anim_easing = easing_in_out(anim * 2.) * 2. - 1.;
+
+    float sq1Size = 0.1;
+    float sq1Angle = 3.14159 / 4.0 + anim_easing;
+    vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
+    
+    // Only draw if uv.x is less than center.x (discardRight = true)
+    vec4 square1 = drawRotatedSquare(uv, vec2(blackX + anim_easing * 0.13, (startY + endY) / 2.0), 
+                                    sq1Size, sq1Angle, sq1Color);
+    result = alphaBlend(square1, result);
+
+    // Draw blue portal
+    vec4 blueCircle1 = drawCircle(uv, vec2(blackX, startY), thickness * 1.5, blackColor);
+    result = alphaBlend(blueCircle1, result);
+    
+    vec4 blueCircle2 = drawCircle(uv, vec2(blackX, endY), thickness * 1.5, blackColor);
+    result = alphaBlend(blueCircle2, result);
+    
+    if (drawPortalSurface == 1) {
+        vec4 blueLine = drawLine(uv, vec2(blackX, startY), vec2(blackX, endY), thickness, blackColor);
+        result = alphaBlend(blueLine, result);
+    }
     
     return result;
 }
