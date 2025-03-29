@@ -249,7 +249,7 @@ vec4 drawTorusScene(vec2 uv) {
     
     // Draw green squares
     float sq1Size = 0.3;
-    float sq1Angle = 3.14159 / 3.0;
+    float sq1Angle = 3.14159 / 3.0 - anim * 3.1459 * 0.5;
     vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
     
     vec4 square1 = drawRotatedSquare(uv, vec2(3.0, 0.4), sq1Size, sq1Angle, sq1Color);
@@ -260,7 +260,7 @@ vec4 drawTorusScene(vec2 uv) {
     
     // Draw blue squares
     float sq2Size = 0.4;
-    float sq2Angle = 3.14159 / 1.5;
+    float sq2Angle = 3.14159 / 1.5 + anim * 3.1459;
     vec4 sq2Color = vec4(128.0/255.0, 128.0/255.0, 1.0, 192.0/255.0);
     
     vec4 square3 = drawRotatedSquare(uv, vec2(0.7, 0.9), sq2Size, sq2Angle, sq2Color);
