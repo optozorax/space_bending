@@ -121,7 +121,7 @@
 
             try {
                 // Load WASM module
-                const wasmModule = await init('./wasm/pkg/wasm_bg.wasm');
+                const wasmModule = await init();
                 wasmMemory = wasmModule.memory;
 
                 // Hide loading screen
