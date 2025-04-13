@@ -772,7 +772,7 @@ impl Mesh {
 
             // Add dihedral springs of distance 2
             dihedral_spring!(new2, idx, mv!(U), mv!(R R), mv!(U L L));
-            dihedral_spring!(new2, idx, mv!(U), mv!(L L), mv!(U L L));
+            dihedral_spring!(new2, idx, mv!(U), mv!(L L), mv!(U R R));
             dihedral_spring!(new2, idx, mv!(R), mv!(D D), mv!(R U U));
             dihedral_spring!(new2, idx, mv!(R), mv!(U U), mv!(R D D));
             dihedral_spring!(new2, mv!(R), mv!(U), mv!(L D), mv!(R U R U));
@@ -780,11 +780,11 @@ impl Mesh {
 
             // Add dihedral springs of distance 3
             dihedral_spring!(new3, idx, mv!(U), mv!(R R R), mv!(U L L L));
-            dihedral_spring!(new3, idx, mv!(U), mv!(L L L), mv!(U L L L));
+            dihedral_spring!(new3, idx, mv!(U), mv!(L L L), mv!(U R R R));
             dihedral_spring!(new3, idx, mv!(R), mv!(D D D), mv!(R U U U));
             dihedral_spring!(new3, idx, mv!(R), mv!(U U U), mv!(R D D D));
-            dihedral_spring!(new3, idx, mv!(R U), mv!(R R D), mv!(U U L));
             dihedral_spring!(new3, mv!(R), mv!(U), mv!(L D L D), mv!(R U R U R U));
+            dihedral_spring!(new3, idx, mv!(R U), mv!(R R D R D), mv!(U U L U L));
 
             // Add triangles for drawing
             trying! {
