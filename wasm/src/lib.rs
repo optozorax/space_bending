@@ -125,16 +125,8 @@ impl DihedralSpring {
         }
     }
 
-    pub fn new(i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
-        Self::new_full(i1, i2, i3, i4, 1.0)
-    }
-
-    pub fn new2(i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
-        Self::new_full(i1, i2, i3, i4, 0.25)
-    }
-
-    pub fn new3(i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
-        Self::new_full(i1, i2, i3, i4, 0.1)
+    pub fn new(kind: usize, i1: usize, i2: usize, i3: usize, i4: usize) -> Self {
+        Self::new_full(i1, i2, i3, i4, 1.0 / 4.0_f64.powi(kind as i32 - 1))
     }
 }
 
@@ -264,6 +256,8 @@ struct SpaceParticle {
     up: Option<usize>,
 
     uv: HashSet<(usize, usize)>,
+
+    disabled: bool,
 }
 
 struct SpaceGraph {
@@ -303,6 +297,7 @@ impl SpaceGraph {
                         Some(result.get_index(i, j + 1))
                     },
                     uv: vec![(i, j)].into_iter().collect(),
+                    disabled: false,
                 });
             }
         }
@@ -689,6 +684,58 @@ impl Mesh {
                 space_graph.graph[get_index(i, sizey - 1)].down = None;
             }
         }
+        if scene == "genus_2" {
+            let ratiox = 3.;
+            let ratioy = 3.;
+            let sizexr = (sizex as f32 / ratiox) as usize;
+            let sizeyr = (sizey as f32 / ratioy) as usize;
+            // A
+            for i in 0..sizexr {
+                space_graph.graph[get_index(i, 0)].down = Some(get_index(i, sizey - 2));
+                space_graph.graph[get_index(i, sizey - 2)].up = Some(get_index(i, 0));
+
+                let new_uv = space_graph.graph[get_index(i, sizey - 1)].uv.clone();
+                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index(i, sizey - 1)].down = None;
+            }
+            // B
+            for i in sizexr..sizex {
+                space_graph.graph[get_index(i, 0)].down = Some(get_index(i, sizeyr - 2));
+                space_graph.graph[get_index(i, sizeyr - 2)].up = Some(get_index(i, 0));
+
+                let new_uv = space_graph.graph[get_index(i, sizeyr - 1)].uv.clone();
+                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index(i, sizeyr - 1)].down = None;
+            }
+            // C
+            for j in 0..sizeyr {
+                space_graph.graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizex - 2));
+                space_graph.graph[get_index_inv(j, sizex - 2)].right = Some(get_index_inv(j, 0));
+
+                let new_uv = space_graph.graph[get_index_inv(j, sizex - 1)].uv.clone();
+                space_graph.graph[get_index_inv(j, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index_inv(j, sizex - 1)].left = None;
+            }
+            // D
+            for j in sizeyr..sizey {
+                space_graph.graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizexr - 2));
+                space_graph.graph[get_index_inv(j, sizexr - 2)].right = Some(get_index_inv(j, 0));
+
+                let new_uv = space_graph.graph[get_index_inv(j, sizexr - 1)].uv.clone();
+                space_graph.graph[get_index_inv(j, 0)].uv.extend(new_uv);
+                space_graph.graph[get_index_inv(j, sizexr - 1)].left = None;
+            }
+
+            for i in sizexr..sizex {
+                for j in sizeyr..sizey {
+                    space_graph.graph[get_index(i, j)].disabled = true;
+                    space_graph.graph[get_index(i, j)].up = None;
+                    space_graph.graph[get_index(i, j)].down = None;
+                    space_graph.graph[get_index(i, j)].left = None;
+                    space_graph.graph[get_index(i, j)].right = None;
+                }
+            }
+        }
         if scene == "mobius_strip" {
             for i in 0..sizex {
                 space_graph.graph[get_index(i, 0)].down = Some(get_index(sizex - 1 - i, sizey - 2));
@@ -751,8 +798,8 @@ impl Mesh {
             }
 
             macro_rules! dihedral_spring {
-                ($type:tt, $($data:tt)*) => {
-                    trying! { self.dihedral_springs.push(DihedralSpring::$type($($data)*)); }
+                ($($data:tt)*) => {
+                    trying! { self.dihedral_springs.push(DihedralSpring::new($($data)*)); }
                 };
             }
 
@@ -762,29 +809,53 @@ impl Mesh {
             edge_spring!(idx, mv!(R U), diagonal_len);
             edge_spring!(mv!(R), mv!(U), diagonal_len);
 
-            // Add dihedral springs of distance 1
-            dihedral_spring!(new, idx, mv!(U), mv!(R), mv!(U L));
-            dihedral_spring!(new, idx, mv!(U), mv!(L), mv!(U R));
-            dihedral_spring!(new, idx, mv!(R), mv!(D), mv!(R U));
-            dihedral_spring!(new, idx, mv!(R), mv!(U), mv!(R D));
-            dihedral_spring!(new, mv!(R), mv!(U), idx, mv!(R U));
-            dihedral_spring!(new, idx, mv!(R U), mv!(R), mv!(U));
+            // // Add dihedral springs of distance 1
+            dihedral_spring!(1, idx, mv!(U), mv!(R), mv!(U L));
+            dihedral_spring!(1, idx, mv!(U), mv!(L), mv!(U R));
+            dihedral_spring!(1, idx, mv!(R), mv!(D), mv!(R U));
+            dihedral_spring!(1, idx, mv!(R), mv!(U), mv!(R D));
+            dihedral_spring!(1, idx, mv!(R U), mv!(R), mv!(U));
+            dihedral_spring!(1, mv!(R), mv!(U), idx, mv!(R U));
 
             // Add dihedral springs of distance 2
-            dihedral_spring!(new2, idx, mv!(U), mv!(R R), mv!(U L L));
-            dihedral_spring!(new2, idx, mv!(U), mv!(L L), mv!(U R R));
-            dihedral_spring!(new2, idx, mv!(R), mv!(D D), mv!(R U U));
-            dihedral_spring!(new2, idx, mv!(R), mv!(U U), mv!(R D D));
-            dihedral_spring!(new2, mv!(R), mv!(U), mv!(L D), mv!(R U R U));
-            dihedral_spring!(new2, idx, mv!(R U), mv!(R R D), mv!(U U L));
+            dihedral_spring!(2, idx, mv!(U), mv!(R R), mv!(U L L));
+            dihedral_spring!(2, idx, mv!(U), mv!(L L), mv!(U R R));
+            dihedral_spring!(2, idx, mv!(R), mv!(D D), mv!(R U U));
+            dihedral_spring!(2, idx, mv!(R), mv!(U U), mv!(R D D));
+            dihedral_spring!(2, idx, mv!(R U), mv!(R R D), mv!(U U L));
+            dihedral_spring!(2, mv!(R), mv!(U), mv!(L D), mv!(R U R U));
 
             // Add dihedral springs of distance 3
-            dihedral_spring!(new3, idx, mv!(U), mv!(R R R), mv!(U L L L));
-            dihedral_spring!(new3, idx, mv!(U), mv!(L L L), mv!(U R R R));
-            dihedral_spring!(new3, idx, mv!(R), mv!(D D D), mv!(R U U U));
-            dihedral_spring!(new3, idx, mv!(R), mv!(U U U), mv!(R D D D));
-            dihedral_spring!(new3, mv!(R), mv!(U), mv!(L D L D), mv!(R U R U R U));
-            dihedral_spring!(new3, idx, mv!(R U), mv!(R R D R D), mv!(U U L U L));
+            dihedral_spring!(3, idx, mv!(U), mv!(R R R), mv!(U L L L));
+            dihedral_spring!(3, idx, mv!(U), mv!(L L L), mv!(U R R R));
+            dihedral_spring!(3, idx, mv!(R), mv!(D D D), mv!(R U U U));
+            dihedral_spring!(3, idx, mv!(R), mv!(U U U), mv!(R D D D));
+            dihedral_spring!(3, idx, mv!(R U), mv!(R R R D D), mv!(U U U L L));
+            dihedral_spring!(3, mv!(R), mv!(U), mv!(L D L D), mv!(R U R U R U));
+
+            // // Add dihedral springs of distance 4
+            // dihedral_spring!(4, idx, mv!(U), mv!(R R R R), mv!(U L L L L));
+            // dihedral_spring!(4, idx, mv!(U), mv!(L L L L), mv!(U R R R R));
+            // dihedral_spring!(4, idx, mv!(R), mv!(D D D D), mv!(R U U U U));
+            // dihedral_spring!(4, idx, mv!(R), mv!(U U U U), mv!(R D D D D));
+            // dihedral_spring!(4, idx, mv!(R U), mv!(R R R R D D D), mv!(U U U U L L L));
+            // dihedral_spring!(4, mv!(R), mv!(U), mv!(L D L D L D), mv!(R U R U R U R U));
+
+            // // Add dihedral springs of distance 5
+            // dihedral_spring!(5, idx, mv!(U), mv!(R R R R R), mv!(U L L L L L));
+            // dihedral_spring!(5, idx, mv!(U), mv!(L L L L L), mv!(U R R R R R));
+            // dihedral_spring!(5, idx, mv!(R), mv!(D D D D D), mv!(R U U U U U));
+            // dihedral_spring!(5, idx, mv!(R), mv!(U U U U U), mv!(R D D D D D));
+            // dihedral_spring!(5, idx, mv!(R U), mv!(R R R R R D D D D), mv!(U U U U U L L L L));
+            // dihedral_spring!(5, mv!(R), mv!(U), mv!(L D L D L D L D), mv!(R U R U R U R U R U));
+
+            // // Add dihedral springs of distance 6
+            // dihedral_spring!(6, idx, mv!(U), mv!(R R R R R R), mv!(U L L L L L L));
+            // dihedral_spring!(6, idx, mv!(U), mv!(L L L L L L), mv!(U R R R R R R));
+            // dihedral_spring!(6, idx, mv!(R), mv!(D D D D D D), mv!(R U U U U U U));
+            // dihedral_spring!(6, idx, mv!(R), mv!(U U U U U U), mv!(R D D D D D D));
+            // dihedral_spring!(6, idx, mv!(R U), mv!(R R R R R R D D D D D), mv!(U U U U U U L L L L L));
+            // dihedral_spring!(6, mv!(R), mv!(U), mv!(L D L D L D L D L D), mv!(R U R U R U R U R U R U));
 
             // Add triangles for drawing
             trying! {
@@ -804,6 +875,19 @@ impl Mesh {
                 }
             }
         }
+
+        self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
+        self.dihedral_springs.retain(|s| 
+            !space_graph.graph[s.i1].disabled && 
+            !space_graph.graph[s.i2].disabled &&
+            !space_graph.graph[s.i3].disabled &&
+            !space_graph.graph[s.i4].disabled
+        );
+        self.triangles.retain(|t|
+            !space_graph.graph[t.indices[0]].disabled && 
+            !space_graph.graph[t.indices[1]].disabled && 
+            !space_graph.graph[t.indices[2]].disabled
+        );
 
         // Fill uv buffer
         {
