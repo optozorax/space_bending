@@ -656,22 +656,28 @@ impl Mesh {
 
         if scene == "cylinder" || scene == "torus" {
             for j in 0..sizey {
-                space_graph.graph[get_index(0, j)].left = Some(get_index(sizex - 2, j));
-                space_graph.graph[get_index(sizex - 2, j)].right = Some(get_index(0, j));
+                let l = get_index(0, j); // left edge
+                let r = get_index(sizex - 2, j); // right edge
+                let e = sg_mv!(space_graph, r, R); // just past the right edge
 
-                let new_uv = space_graph.graph[get_index(sizex - 1, j)].uv.clone();
-                space_graph.graph[get_index(0, j)].uv.extend(new_uv);
-                space_graph.graph[get_index(sizex - 1, j)].left = None;
+                sg_connect!(space_graph, l, r, L); // connect left of l to right of r
+
+                sg_at_dir!(space_graph, e, L) = None; // disconnect the "strip" at the far right edge
+
+                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
         if scene == "torus" {
             for i in 0..sizex {
-                space_graph.graph[get_index(i, 0)].down = Some(get_index(i, sizey - 2));
-                space_graph.graph[get_index(i, sizey - 2)].up = Some(get_index(i, 0));
+                let b = get_index(i, 0); // bottom edge
+                let t = get_index(i, sizey - 2); // top edge
+                let e = sg_mv!(space_graph, t, U); // just past the top edge
 
-                let new_uv = space_graph.graph[get_index(i, sizey - 1)].uv.clone();
-                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index(i, sizey - 1)].down = None;
+                sg_connect!(space_graph, b, t, D); // connect down of b to up of t
+
+                sg_at_dir!(space_graph, e, D) = None; // disconnect the "strip" at the far top edge
+
+                sg_copy_uv!(space_graph, e, b); // add uv coordinates to left edge
             }
         }
         if scene == "genus_2" {
