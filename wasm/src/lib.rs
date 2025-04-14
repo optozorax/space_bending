@@ -266,6 +266,98 @@ struct SpaceGraph {
     sizey: usize,
 }
 
+// a bracketed direction means reverse
+macro_rules! sg_at_dir {
+    ($graph:expr, $idx:expr, R) => {
+        $graph.graph[$idx].right
+    };
+    ($graph:expr, $idx:expr, U) => {
+        $graph.graph[$idx].up
+    };
+    ($graph:expr, $idx:expr, D) => {
+        $graph.graph[$idx].down
+    };
+    ($graph:expr, $idx:expr, L) => {
+        $graph.graph[$idx].left
+    };
+    ($graph:expr, $idx:expr, [R]) => {
+        $graph.graph[$idx].left
+    };
+    ($graph:expr, $idx:expr, [U]) => {
+        $graph.graph[$idx].down
+    };
+    ($graph:expr, $idx:expr, [D]) => {
+        $graph.graph[$idx].up
+    };
+    ($graph:expr, $idx:expr, [L]) => {
+        $graph.graph[$idx].right
+    };
+    ($graph:expr, $idx:expr, [[$dir:tt]]) => {
+        sg_at_dir!($graph, $idx, $dir)
+    };
+}
+
+macro_rules! sg_process_move {
+    ($graph:expr, $idx:expr, $move:tt) => {
+        sg_at_dir!($graph, $idx, $move).unwrap()
+    };
+}
+
+macro_rules! sg_mv_ {
+    ($graph:expr, $idx:expr, ) => {$idx};
+    ($graph:expr, $idx:expr, $move:tt $($moves:tt)*) => {
+        sg_mv_!($graph, sg_process_move!($graph, $idx, $move), $($moves)*)
+    };
+}
+
+macro_rules! sg_mv {
+    ($graph:expr, $idx:expr, $($moves:tt)*) => {
+        sg_mv_!($graph, $idx, $($moves)*)
+    };
+}
+
+macro_rules! sg_connect_nouv {
+    ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
+        sg_at_dir!($graph, $idx1, $dir) = Some($idx2);
+        sg_at_dir!($graph, $idx2, [$dir]) = Some($idx1);
+    }
+}
+
+macro_rules! sg_copy_uv {
+    ($graph:expr, $idx1:expr, $idx2:expr) => {
+        {
+            let uv = $graph.graph[$idx1].uv.clone();
+            $graph.graph[$idx2].uv.extend(uv);
+        }
+    }
+}
+
+macro_rules! sg_exchange {
+    ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
+        {
+            let i1 = sg_mv!($graph, $idx1, $dir);
+            let i2 = sg_mv!($graph, $idx2, $dir);
+
+            sg_connect_nouv!($graph, $idx1, i2, $dir);
+            sg_connect_nouv!($graph, $idx2, i1, $dir);
+
+            sg_copy_uv!($graph, $idx1, $idx2);
+            sg_copy_uv!($graph, $idx2, $idx1);
+        }
+    }
+}
+
+macro_rules! sg_disconnect {
+    ($graph:expr, $idx:expr, $dir:tt) => {
+        {
+            let i = sg_mv!($graph, $idx, $dir);
+
+            sg_at_dir!($graph, $idx, $dir) = None;
+            sg_at_dir!($graph, i, [$dir]) = None;
+        }
+    }
+}
+
 impl SpaceGraph {
     fn new(sizex: usize, sizey: usize) -> Self {
         let mut result = Self {
@@ -321,39 +413,17 @@ impl SpaceGraph {
 
         // Disconnect singularity points from up and down
 
-        self.graph[get_index(blue_x, start_y)].down = None;
-        self.graph[get_index(blue_x, start_y - 1)].up = None;
-
-        self.graph[get_index(blue_x, end_y)].up = None;
-        self.graph[get_index(blue_x, end_y + 1)].down = None;
-
-        self.graph[get_index(orange_x, start_y)].down = None;
-        self.graph[get_index(orange_x, start_y - 1)].up = None;
-
-        self.graph[get_index(orange_x, end_y)].up = None;
-        self.graph[get_index(orange_x, end_y + 1)].down = None;
+        sg_disconnect!(self, get_index(blue_x, start_y), D);
+        sg_disconnect!(self, get_index(blue_x, end_y), U);
+        sg_disconnect!(self, get_index(orange_x, start_y), D);
+        sg_disconnect!(self, get_index(orange_x, end_y), U);
 
         // -------------------------------------------------------------------
 
         // Connect the main vertical surface
 
         for j in start_y..=end_y {
-            let m1 = get_index(blue_x, j);
-            let r1 = get_index(blue_x + 1, j);
-            let m2 = get_index(orange_x, j);
-            let r2 = get_index(orange_x + 1, j);
-
-            self.graph[m1].right = Some(r2);
-            self.graph[r2].left = Some(m1);
-
-            self.graph[m2].right = Some(r1);
-            self.graph[r1].left = Some(m2);
-
-            let new_uv = self.graph[m2].uv.clone();
-            self.graph[m1].uv.extend(new_uv);
-
-            let new_uv = self.graph[m1].uv.clone();
-            self.graph[m2].uv.extend(new_uv);
+            sg_exchange!(self, get_index(blue_x, j), get_index(orange_x, j), R);
         }
     }
 
@@ -370,17 +440,10 @@ impl SpaceGraph {
 
         // Disconnect singularity points from up and down
 
-        self.graph[get_index(blue_x, start_y)].down = None;
-        self.graph[get_index(blue_x, start_y - 1)].up = None;
-
-        self.graph[get_index(blue_x, end_y)].up = None;
-        self.graph[get_index(blue_x, end_y + 1)].down = None;
-
-        self.graph[get_index(orange_x, start_y)].down = None;
-        self.graph[get_index(orange_x, start_y - 1)].up = None;
-
-        self.graph[get_index(orange_x, end_y)].up = None;
-        self.graph[get_index(orange_x, end_y + 1)].down = None;
+        sg_disconnect!(self, get_index(blue_x, start_y), D);
+        sg_disconnect!(self, get_index(blue_x, end_y), U);
+        sg_disconnect!(self, get_index(orange_x, start_y), D);
+        sg_disconnect!(self, get_index(orange_x, end_y), U);
 
         // -------------------------------------------------------------------
 
@@ -489,22 +552,7 @@ impl SpaceGraph {
         start_y += 1;
         end_y -= 1;
         for j in start_y..=end_y {
-            let m1 = get_index(blue_x, j);
-            let r1 = get_index(blue_x + 1, j);
-            let m2 = get_index(orange_x, j);
-            let r2 = get_index(orange_x + 1, j);
-
-            self.graph[m1].right = Some(r2);
-            self.graph[r2].left = Some(m1);
-
-            self.graph[m2].right = Some(r1);
-            self.graph[r1].left = Some(m2);
-
-            let new_uv = self.graph[m2].uv.clone();
-            self.graph[m1].uv.extend(new_uv);
-
-            let new_uv = self.graph[m1].uv.clone();
-            self.graph[m2].uv.extend(new_uv);
+            sg_exchange!(self, get_index(blue_x, j), get_index(orange_x, j), R);
         }
     }
 }
@@ -659,19 +707,17 @@ impl Mesh {
 
         // Helper function to get index from grid coordinates
         let get_index = |i, j| i * sizey + j;
-        let get_index_inv = |i, j| get_index(j, i);
-        // let get_coords = |idx: usize| (idx / sizey, idx % sizey);
 
         let mut space_graph = SpaceGraph::new(sizex, sizey);
 
         if scene == "cylinder" || scene == "torus" {
             for j in 0..sizey {
-                space_graph.graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizex - 2));
-                space_graph.graph[get_index_inv(j, sizex - 2)].right = Some(get_index_inv(j, 0));
+                space_graph.graph[get_index(0, j)].left = Some(get_index(sizex - 2, j));
+                space_graph.graph[get_index(sizex - 2, j)].right = Some(get_index(0, j));
 
-                let new_uv = space_graph.graph[get_index_inv(j, sizex - 1)].uv.clone();
-                space_graph.graph[get_index_inv(j, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index_inv(j, sizex - 1)].left = None;
+                let new_uv = space_graph.graph[get_index(sizex - 1, j)].uv.clone();
+                space_graph.graph[get_index(0, j)].uv.extend(new_uv);
+                space_graph.graph[get_index(sizex - 1, j)].left = None;
             }
         }
         if scene == "torus" {
@@ -764,22 +810,22 @@ impl Mesh {
             };
         }
 
-        for idx in 0..self.particles.len() {
-            macro_rules! process_move {
-                ($temp:expr, R) => {
-                    space_graph.graph[$temp].right?
-                };
-                ($temp:expr, U) => {
-                    space_graph.graph[$temp].up?
-                };
-                ($temp:expr, D) => {
-                    space_graph.graph[$temp].down?
-                };
-                ($temp:expr, L) => {
-                    space_graph.graph[$temp].left?
-                };
-            }
+        macro_rules! process_move {
+            ($temp:expr, R) => {
+                space_graph.graph[$temp].right?
+            };
+            ($temp:expr, U) => {
+                space_graph.graph[$temp].up?
+            };
+            ($temp:expr, D) => {
+                space_graph.graph[$temp].down?
+            };
+            ($temp:expr, L) => {
+                space_graph.graph[$temp].left?
+            };
+        }
 
+        for idx in 0..self.particles.len() {
             macro_rules! mv {
                 () => { idx };
                 ($($moves:tt)*) => {{
