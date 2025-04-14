@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::collections::VecDeque;
 use std::ops::{Add, Mul, Sub};
 use wasm_bindgen::prelude::*;
 
@@ -554,84 +553,6 @@ impl SpaceGraph {
 
             let new_uv = self.graph[m1].uv.clone();
             self.graph[m2].uv.extend(new_uv);
-        }
-    }
-}
-
-impl SpaceGraph {
-    /// Compares if this SpaceGraph is structurally equal to another SpaceGraph
-    pub fn is_equal_to(&self, other: &SpaceGraph) -> bool {
-        use std::collections::{HashMap, HashSet, VecDeque};
-
-        // Check if dimensions match
-        if self.sizex != other.sizex || self.sizey != other.sizey {
-            return false;
-        }
-
-        // Handle empty graphs
-        if self.graph.is_empty() && other.graph.is_empty() {
-            return true;
-        }
-        if self.graph.is_empty() || other.graph.is_empty() {
-            return false;
-        }
-
-        // Initialize BFS queue starting with both graphs' node 0
-        let mut queue = VecDeque::new();
-        queue.push_back((0, 0)); // (self_index, other_index)
-
-        // Keep track of visited nodes and mappings between graph indices
-        let mut visited = HashSet::new();
-        let mut index_mapping = HashMap::new(); // Maps self indices to other indices
-
-        while let Some((self_idx, other_idx)) = queue.pop_front() {
-            // Skip if we've already processed this pair
-            if !visited.insert((self_idx, other_idx)) {
-                continue;
-            }
-
-            // Store the mapping
-            index_mapping.insert(self_idx, other_idx);
-
-            // Get the particles to compare
-            let self_particle = &self.graph[self_idx];
-            let other_particle = &other.graph[other_idx];
-
-            // Check directional connections
-            if !self.check_direction_match(self_particle.left, other_particle.left)
-                || !self.check_direction_match(self_particle.right, other_particle.right)
-                || !self.check_direction_match(self_particle.down, other_particle.down)
-                || !self.check_direction_match(self_particle.up, other_particle.up)
-            {
-                return false;
-            }
-
-            // Add connected nodes to the queue
-            self.add_to_queue_if_connected(&mut queue, self_particle.left, other_particle.left);
-            self.add_to_queue_if_connected(&mut queue, self_particle.right, other_particle.right);
-            self.add_to_queue_if_connected(&mut queue, self_particle.down, other_particle.down);
-            self.add_to_queue_if_connected(&mut queue, self_particle.up, other_particle.up);
-        }
-
-        // Ensure all nodes were visited (graph is fully connected)
-        index_mapping.len() == self.graph.len() && index_mapping.len() == other.graph.len()
-    }
-
-    /// Helper to check if direction connections match in pattern
-    fn check_direction_match(&self, self_dir: Option<usize>, other_dir: Option<usize>) -> bool {
-        // Both should either have a connection or not have a connection
-        self_dir.is_some() == other_dir.is_some()
-    }
-
-    /// Helper to add connected nodes to the queue
-    fn add_to_queue_if_connected(
-        &self,
-        queue: &mut VecDeque<(usize, usize)>,
-        self_dir: Option<usize>,
-        other_dir: Option<usize>,
-    ) {
-        if let (Some(self_next), Some(other_next)) = (self_dir, other_dir) {
-            queue.push_back((self_next, other_next));
         }
     }
 }
@@ -1253,6 +1174,84 @@ impl MeshHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl SpaceGraph {
+        /// Compares if this SpaceGraph is structurally equal to another SpaceGraph
+        pub fn is_equal_to(&self, other: &SpaceGraph) -> bool {
+            use std::collections::{HashMap, VecDeque};
+
+            // Check if dimensions match
+            if self.sizex != other.sizex || self.sizey != other.sizey {
+                return false;
+            }
+
+            // Handle empty graphs
+            if self.graph.is_empty() && other.graph.is_empty() {
+                return true;
+            }
+            if self.graph.is_empty() || other.graph.is_empty() {
+                return false;
+            }
+
+            // Initialize BFS queue starting with both graphs' node 0
+            let mut queue = VecDeque::new();
+            queue.push_back((0, 0)); // (self_index, other_index)
+
+            // Keep track of visited nodes and mappings between graph indices
+            let mut visited = HashSet::new();
+            let mut index_mapping = HashMap::new(); // Maps self indices to other indices
+
+            while let Some((self_idx, other_idx)) = queue.pop_front() {
+                // Skip if we've already processed this pair
+                if !visited.insert((self_idx, other_idx)) {
+                    continue;
+                }
+
+                // Store the mapping
+                index_mapping.insert(self_idx, other_idx);
+
+                // Get the particles to compare
+                let self_particle = &self.graph[self_idx];
+                let other_particle = &other.graph[other_idx];
+
+                // Check directional connections
+                if !self.check_direction_match(self_particle.left, other_particle.left)
+                    || !self.check_direction_match(self_particle.right, other_particle.right)
+                    || !self.check_direction_match(self_particle.down, other_particle.down)
+                    || !self.check_direction_match(self_particle.up, other_particle.up)
+                {
+                    return false;
+                }
+
+                // Add connected nodes to the queue
+                self.add_to_queue_if_connected(&mut queue, self_particle.left, other_particle.left);
+                self.add_to_queue_if_connected(&mut queue, self_particle.right, other_particle.right);
+                self.add_to_queue_if_connected(&mut queue, self_particle.down, other_particle.down);
+                self.add_to_queue_if_connected(&mut queue, self_particle.up, other_particle.up);
+            }
+
+            // Ensure all nodes were visited (graph is fully connected)
+            index_mapping.len() == self.graph.len() && index_mapping.len() == other.graph.len()
+        }
+
+        /// Helper to check if direction connections match in pattern
+        fn check_direction_match(&self, self_dir: Option<usize>, other_dir: Option<usize>) -> bool {
+            // Both should either have a connection or not have a connection
+            self_dir.is_some() == other_dir.is_some()
+        }
+
+        /// Helper to add connected nodes to the queue
+        fn add_to_queue_if_connected(
+            &self,
+            queue: &mut VecDeque<(usize, usize)>,
+            self_dir: Option<usize>,
+            other_dir: Option<usize>,
+        ) {
+            if let (Some(self_next), Some(other_next)) = (self_dir, other_dir) {
+                queue.push_back((self_next, other_next));
+            }
+        }
+    }
 
     #[test]
     fn basic() {
