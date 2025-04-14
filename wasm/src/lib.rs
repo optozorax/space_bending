@@ -872,6 +872,23 @@ impl Mesh {
                     // eprintln!("L: {:?}, LD: {:?}, LDR: {:?}, LDRU: {:?}", get_coords(mv!(L)), get_coords(mv!(L D)), get_coords(mv!(L D R)), get_coords(mv!(L D R U)));
                 }
             }
+            // "hack"
+            trying! {
+                if idx == mv!(U R U L) && mv!(U R U L) == mv!(R D L D) {
+                    self.triangles.push(Triangle::new(idx, mv!(R), mv!(U)));
+                } else {
+                    // eprintln!("TR_RU, idx: {:?}, URDL: {:?}, RULD: {:?}", get_coords(idx), get_coords(mv!(U R D L)), get_coords(mv!(R U L D)));
+                    // eprintln!("U: {:?}, UR: {:?}, URD: {:?}, URDL: {:?}", get_coords(mv!(U)), get_coords(mv!(U R)), get_coords(mv!(U R D)), get_coords(mv!(U R D L)));
+                }
+            }
+            trying! {
+                if idx == mv!(L D R D) && mv!(L D R D) == mv!(D L D R) {
+                    self.triangles.push(Triangle::new(idx, mv!(L), mv!(U)));
+                } else {
+                    // eprintln!("TR_LD, idx: {:?}, LDRU: {:?}, DLUR: {:?}", get_coords(idx), get_coords(mv!(L D R U)), get_coords(mv!(D L U R)));
+                    // eprintln!("L: {:?}, LD: {:?}, LDR: {:?}, LDRU: {:?}", get_coords(mv!(L)), get_coords(mv!(L D)), get_coords(mv!(L D R)), get_coords(mv!(L D R U)));
+                }
+            }
         }
 
         self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
