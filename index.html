@@ -101,6 +101,16 @@
                     guidata.size = 10;
                     constants.iterations = 2;
                 }
+                if (guidata.scene == "mobius_strip") {
+                    guidata.ratio = 2.;
+                    guidata.size = 20;
+                    constants.iterations = 2;
+                }
+                if (guidata.scene == "klein_bottle") {
+                    guidata.ratio = 2.;
+                    guidata.size = 20;
+                    constants.iterations = 2;
+                }
                 if (guidata.scene == "portal2") {
                     guidata.ratio = 1.;
                     guidata.size = 50;
@@ -285,7 +295,9 @@
             switch (guidata.scene) {
                 case "portal1": return 0;
                 case "cylinder": return 1;
+                case "mobius_strip": return 1;
                 case "torus": return 2;
+                case "klein_bottle": return 2;
                 case "flat": return 3;
                 case "portal2": return 4;
                 default: return 0;
@@ -345,6 +357,8 @@
                 "cylinder",
                 "torus",
                 "flat",
+                "mobius_strip",
+                "klein_bottle",
             ]).onChange(value => {
                 createMesh(false);
             });

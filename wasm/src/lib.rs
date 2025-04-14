@@ -667,7 +667,7 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
-        if scene == "torus" {
+        if scene == "torus" || scene == "klein_bottle" {
             for i in 0..sizex {
                 let b = get_index(i, 0); // bottom edge
                 let t = get_index(i, sizey - 2); // top edge
@@ -732,16 +732,18 @@ impl Mesh {
                 }
             }
         }
-        if scene == "mobius_strip" {
-            for i in 0..sizex {
-                space_graph.graph[get_index(i, 0)].down = Some(get_index(sizex - 1 - i, sizey - 2));
-                space_graph.graph[get_index(sizex - 1 - i, sizey - 2)].up = Some(get_index(i, 0));
+        if scene == "mobius_strip" || scene == "klein_bottle" {
+            for j in 0..sizey {
+                // this breaks because the triangle generation assumes an orientable surface
+                let l = get_index(0, j); // left edge
+                let r = get_index(sizex - 2, sizey - 1 - j); // right edge
+                let e = sg_mv!(space_graph, r, R); // just past the right edge
 
-                let new_uv = space_graph.graph[get_index(sizex - 1 - i, sizey - 1)]
-                    .uv
-                    .clone();
-                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index(i, sizey - 1)].down = None;
+                sg_connect!(space_graph, l, r, L); // connect left of l to right of r
+
+                sg_at_dir!(space_graph, e, L) = None; // disconnect the "strip" at the far right edge
+
+                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
         if scene == "portal1" {
