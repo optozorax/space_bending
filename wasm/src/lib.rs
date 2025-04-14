@@ -316,7 +316,7 @@ macro_rules! sg_mv {
     };
 }
 
-macro_rules! sg_connect_nouv {
+macro_rules! sg_connect {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
         sg_at_dir!($graph, $idx1, $dir) = Some($idx2);
         sg_at_dir!($graph, $idx2, [$dir]) = Some($idx1);
@@ -338,8 +338,8 @@ macro_rules! sg_exchange {
             let i1 = sg_mv!($graph, $idx1, $dir);
             let i2 = sg_mv!($graph, $idx2, $dir);
 
-            sg_connect_nouv!($graph, $idx1, i2, $dir);
-            sg_connect_nouv!($graph, $idx2, i1, $dir);
+            sg_connect!($graph, $idx1, i2, $dir);
+            sg_connect!($graph, $idx2, i1, $dir);
 
             sg_exchange_uv!($graph, $idx1, $idx2);
         }
