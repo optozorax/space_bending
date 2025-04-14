@@ -341,8 +341,7 @@ macro_rules! sg_exchange {
             sg_connect_nouv!($graph, $idx1, i2, $dir);
             sg_connect_nouv!($graph, $idx2, i1, $dir);
 
-            sg_copy_uv!($graph, $idx1, $idx2);
-            sg_copy_uv!($graph, $idx2, $idx1);
+            sg_exchange_uv!($graph, $idx1, $idx2);
         }
     }
 }
@@ -354,6 +353,15 @@ macro_rules! sg_disconnect {
 
             sg_at_dir!($graph, $idx, $dir) = None;
             sg_at_dir!($graph, i, [$dir]) = None;
+        }
+    }
+}
+
+macro_rules! sg_exchange_uv {
+    ($graph:expr, $idx1:expr, $idx2:expr) => {
+        {
+            sg_copy_uv!($graph, $idx1, $idx2);
+            sg_copy_uv!($graph, $idx2, $idx1);
         }
     }
 }
@@ -450,31 +458,11 @@ impl SpaceGraph {
         // Connect upper and lower portal surface
 
         for _ in 0..2 {
-            self.graph[get_index(blue_x, start_y)].up = Some(get_index(orange_x, start_y + 1));
-            self.graph[get_index(orange_x, start_y + 1)].down = Some(get_index(blue_x, start_y));
-
-            self.graph[get_index(orange_x, start_y)].up = Some(get_index(blue_x, start_y + 1));
-            self.graph[get_index(blue_x, start_y + 1)].down = Some(get_index(orange_x, start_y));
-
-            let new_uv = self.graph[get_index(blue_x, start_y)].uv.clone();
-            self.graph[get_index(orange_x, start_y)].uv.extend(new_uv);
-
-            let new_uv = self.graph[get_index(orange_x, start_y)].uv.clone();
-            self.graph[get_index(blue_x, start_y)].uv.extend(new_uv);
+            sg_exchange!(self, get_index(blue_x, start_y), get_index(orange_x, start_y), U);
 
             // ---------------------------------------------------------------
 
-            self.graph[get_index(blue_x, end_y)].down = Some(get_index(orange_x, end_y - 1));
-            self.graph[get_index(orange_x, end_y - 1)].up = Some(get_index(blue_x, end_y));
-
-            self.graph[get_index(orange_x, end_y)].down = Some(get_index(blue_x, end_y - 1));
-            self.graph[get_index(blue_x, end_y - 1)].up = Some(get_index(orange_x, end_y));
-
-            let new_uv = self.graph[get_index(blue_x, end_y)].uv.clone();
-            self.graph[get_index(orange_x, end_y)].uv.extend(new_uv);
-
-            let new_uv = self.graph[get_index(orange_x, end_y)].uv.clone();
-            self.graph[get_index(blue_x, end_y)].uv.extend(new_uv);
+            sg_exchange!(self, get_index(blue_x, end_y), get_index(orange_x, end_y), D);
 
             blue_x -= 1;
             orange_x -= 1;
@@ -486,39 +474,8 @@ impl SpaceGraph {
 
         // Connect singularity points from left to right (this is ok) in lower part
 
-        let m1 = get_index(blue_x, start_y);
-        let r1 = get_index(blue_x + 1, start_y);
-        let m2 = get_index(orange_x, start_y);
-        let r2 = get_index(orange_x + 1, start_y);
-
-        self.graph[m1].right = Some(r2);
-        self.graph[r2].left = Some(m1);
-
-        self.graph[m2].right = Some(r1);
-        self.graph[r1].left = Some(m2);
-
-        let new_uv = self.graph[m2].uv.clone();
-        self.graph[m1].uv.extend(new_uv);
-
-        let new_uv = self.graph[m1].uv.clone();
-        self.graph[m2].uv.extend(new_uv);
-
-        let m1 = get_index(blue_x, end_y);
-        let r1 = get_index(blue_x + 1, end_y);
-        let m2 = get_index(orange_x, end_y);
-        let r2 = get_index(orange_x + 1, end_y);
-
-        self.graph[m1].right = Some(r2);
-        self.graph[r2].left = Some(m1);
-
-        self.graph[m2].right = Some(r1);
-        self.graph[r1].left = Some(m2);
-
-        let new_uv = self.graph[m2].uv.clone();
-        self.graph[m1].uv.extend(new_uv);
-
-        let new_uv = self.graph[m1].uv.clone();
-        self.graph[m2].uv.extend(new_uv);
+        sg_exchange!(self, get_index(blue_x, start_y), get_index(orange_x, start_y), R);
+        sg_exchange!(self, get_index(blue_x, end_y), get_index(orange_x, end_y), R);
 
         // -------------------------------------------------------------------
 
@@ -529,21 +486,8 @@ impl SpaceGraph {
 
         // Add uv coordinates to singularity points
 
-        let m1 = get_index(blue_x, start_y);
-        let m2 = get_index(orange_x, start_y);
-        let new_uv = self.graph[m2].uv.clone();
-        self.graph[m1].uv.extend(new_uv);
-
-        let new_uv = self.graph[m1].uv.clone();
-        self.graph[m2].uv.extend(new_uv);
-
-        let m1 = get_index(blue_x, end_y);
-        let m2 = get_index(orange_x, end_y);
-        let new_uv = self.graph[m2].uv.clone();
-        self.graph[m1].uv.extend(new_uv);
-
-        let new_uv = self.graph[m1].uv.clone();
-        self.graph[m2].uv.extend(new_uv);
+        sg_exchange_uv!(self, get_index(blue_x, start_y), get_index(orange_x, start_y));
+        sg_exchange_uv!(self, get_index(blue_x, end_y), get_index(orange_x, end_y));
 
         // -------------------------------------------------------------------
 
