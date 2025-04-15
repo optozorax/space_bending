@@ -823,48 +823,48 @@ impl Mesh {
             let sizeyr = (sizey as f32 / ratioy) as usize;
             // A
             for i in 0..sizexr {
-                space_graph.graph[get_index(i, 0)].down = Some(get_index(i, sizey - 2));
-                space_graph.graph[get_index(i, sizey - 2)].up = Some(get_index(i, 0));
+                space_graph.graph[get_index(i, 0).idx].down = Some(get_index(i, sizey - 2).idx);
+                space_graph.graph[get_index(i, sizey - 2).idx].up = Some(get_index(i, 0).idx);
 
                 let new_uv = space_graph.graph[get_index(i, sizey - 1)].uv.clone();
-                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index(i, sizey - 1)].down = None;
+                space_graph.graph[get_index(i, 0).idx].uv.extend(new_uv);
+                space_graph.graph[get_index(i, sizey - 1).idx].down = None;
             }
             // B
             for i in sizexr..sizex {
-                space_graph.graph[get_index(i, 0)].down = Some(get_index(i, sizeyr - 2));
-                space_graph.graph[get_index(i, sizeyr - 2)].up = Some(get_index(i, 0));
+                space_graph.graph[get_index(i, 0).idx].down = Some(get_index(i, sizeyr - 2).idx);
+                space_graph.graph[get_index(i, sizeyr - 2).idx].up = Some(get_index(i, 0).idx);
 
-                let new_uv = space_graph.graph[get_index(i, sizeyr - 1)].uv.clone();
-                space_graph.graph[get_index(i, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index(i, sizeyr - 1)].down = None;
+                let new_uv = space_graph.graph[get_index(i, sizeyr - 1).idx].uv.clone();
+                space_graph.graph[get_index(i, 0).idx].uv.extend(new_uv);
+                space_graph.graph[get_index(i, sizeyr - 1).idx].down = None;
             }
             // C
             for j in 0..sizeyr {
-                space_graph.graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizex - 2));
-                space_graph.graph[get_index_inv(j, sizex - 2)].right = Some(get_index_inv(j, 0));
+                space_graph.graph[get_index(0, j).idx].left = Some(get_index(sizex - 2, j).idx);
+                space_graph.graph[get_index(sizex - 2, j).idx].right = Some(get_index(0, j).idx);
 
-                let new_uv = space_graph.graph[get_index_inv(j, sizex - 1)].uv.clone();
-                space_graph.graph[get_index_inv(j, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index_inv(j, sizex - 1)].left = None;
+                let new_uv = space_graph.graph[get_index(sizex - 1).idx].uv.clone();
+                space_graph.graph[get_index(0, j).idx].uv.extend(new_uv);
+                space_graph.graph[get_index(sizex - 1, j).idx].left = None;
             }
             // D
             for j in sizeyr..sizey {
-                space_graph.graph[get_index_inv(j, 0)].left = Some(get_index_inv(j, sizexr - 2));
-                space_graph.graph[get_index_inv(j, sizexr - 2)].right = Some(get_index_inv(j, 0));
+                space_graph.graph[get_index(0, j).idx].left = Some(get_index(sizexr - 2, j).idx);
+                space_graph.graph[get_index(sizexr - 2, j).idx].right = Some(get_index(0, j).idx);
 
-                let new_uv = space_graph.graph[get_index_inv(j, sizexr - 1)].uv.clone();
-                space_graph.graph[get_index_inv(j, 0)].uv.extend(new_uv);
-                space_graph.graph[get_index_inv(j, sizexr - 1)].left = None;
+                let new_uv = space_graph.graph[get_index(sizexr - 1, j).idx].uv.clone();
+                space_graph.graph[get_index(0, j).idx].uv.extend(new_uv);
+                space_graph.graph[get_index(sizexr - 1, j).idx].left = None;
             }
 
             for i in sizexr..sizex {
                 for j in sizeyr..sizey {
-                    space_graph.graph[get_index(i, j)].disabled = true;
-                    space_graph.graph[get_index(i, j)].up = None;
-                    space_graph.graph[get_index(i, j)].down = None;
-                    space_graph.graph[get_index(i, j)].left = None;
-                    space_graph.graph[get_index(i, j)].right = None;
+                    space_graph.graph[get_index(i, j).idx].disabled = true;
+                    space_graph.graph[get_index(i, j).idx].up = None;
+                    space_graph.graph[get_index(i, j).idx].down = None;
+                    space_graph.graph[get_index(i, j).idx].left = None;
+                    space_graph.graph[get_index(i, j).idx].right = None;
                 }
             }
         }
