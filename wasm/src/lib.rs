@@ -816,6 +816,32 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, b); // add uv coordinates to left edge
             }
         }
+        if scene == "mobius_strip"{
+            for j in 0..sizey {
+                let l = get_index(0, j); // left edge
+                let r = get_index(sizex - 2, sizey - 1 - j); // right edge
+                let e = sg_mv!(space_graph, r, R); // just past the right edge
+
+                sg_connect_flip!(space_graph, l, r, L); // connect left of l to right of r
+
+                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
+
+                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
+            }
+        }
+        if scene == "klein_bottle" {
+            for j in 0..sizey - 1 {
+                let l = get_index(0, j); // left edge
+                let r = get_index(sizex - 2, sizey - 1 - j); // right edge
+                let e = sg_mv!(space_graph, r, R); // just past the right edge
+
+                sg_connect_flip!(space_graph, l, r, L); // connect left of l to right of r
+
+                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
+
+                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
+            }
+        }
         if scene == "genus_2" {
             let ratiox = 3.;
             let ratioy = 3.;
@@ -866,20 +892,6 @@ impl Mesh {
                     space_graph.graph[get_index(i, j).idx].left = None;
                     space_graph.graph[get_index(i, j).idx].right = None;
                 }
-            }
-        }
-        if scene == "mobius_strip" || scene == "klein_bottle" {
-            for j in 0..sizey {
-                // this breaks because the triangle generation assumes an orientable surface
-                let l = get_index(0, j); // left edge
-                let r = get_index(sizex - 2, sizey - 1 - j); // right edge
-                let e = sg_mv!(space_graph, r, R); // just past the right edge
-
-                sg_connect_flip!(space_graph, l, r, L); // connect left of l to right of r
-
-                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
-
-                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
         if scene == "portal1" {
