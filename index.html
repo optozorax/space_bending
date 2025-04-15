@@ -116,6 +116,11 @@
                     guidata.size = 20;
                     constants.iterations = 2;
                 }
+                if (guidata.scene == "genus_2") {
+                    guidata.ratio = 0.5;
+                    guidata.size = 20;
+                    constants.iterations = 2;
+                }
             }
 
             meshHandle = new MeshHandle(size_x(guidata.size) + 1, size_y(guidata.size) + 1, guidata.useFlatMesh ? "flat" : guidata.scene);
