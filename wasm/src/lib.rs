@@ -803,7 +803,7 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
-        if scene == "torus" || scene == "klein_bottle" || scene == "klein_bottle_2" {
+        if scene == "torus" || scene == "klein_bottle" {
             for i in 0..sizex {
                 let b = get_index(i, 0); // bottom edge
                 let t = get_index(i, sizey - 2); // top edge
@@ -829,7 +829,7 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
-        if scene == "klein_bottle" || scene == "klein_bottle_2" {
+        if scene == "klein_bottle" {
             for j in 0..sizey - 1 {
                 let l = get_index(0, j); // left edge
                 let r = get_index(sizex - 2, (sizey - 1 - j) % (sizey - 1)); // right edge
