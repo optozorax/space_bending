@@ -832,7 +832,7 @@ impl Mesh {
         if scene == "klein_bottle" {
             for j in 0..sizey - 1 {
                 let l = get_index(0, j); // left edge
-                let r = get_index(sizex - 2, sizey - 2 - j); // right edge
+                let r = get_index(sizex - 2, (sizey - 1 - j) % (sizey - 1)); // right edge
                 let e = sg_mv!(space_graph, r, R); // just past the right edge
 
                 sg_connect_flip!(space_graph, l, r, L); // connect left of l to right of r
