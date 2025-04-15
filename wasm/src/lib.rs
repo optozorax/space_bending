@@ -803,7 +803,7 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
-        if scene == "torus" || scene == "klein_bottle" {
+        if scene == "torus" || scene == "klein_bottle" || scene == "klein_bottle_2" {
             for i in 0..sizex {
                 let b = get_index(i, 0); // bottom edge
                 let t = get_index(i, sizey - 2); // top edge
@@ -816,7 +816,7 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, b); // add uv coordinates to left edge
             }
         }
-        if scene == "mobius_strip"{
+        if scene == "mobius_strip" {
             for j in 0..sizey {
                 let l = get_index(0, j); // left edge
                 let r = get_index(sizex - 2, sizey - 1 - j); // right edge
@@ -829,7 +829,7 @@ impl Mesh {
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
         }
-        if scene == "klein_bottle" {
+        if scene == "klein_bottle" || scene == "klein_bottle_2" {
             for j in 0..sizey - 1 {
                 let l = get_index(0, j); // left edge
                 let r = get_index(sizex - 2, (sizey - 1 - j) % (sizey - 1)); // right edge
@@ -898,11 +898,11 @@ impl Mesh {
 
             for i in sizexr..sizex {
                 for j in sizeyr..sizey {
-                    //space_graph.graph[get_index(i, j).idx].disabled = true;
-                    //space_graph.graph[get_index(i, j).idx].up = None;
-                    //space_graph.graph[get_index(i, j).idx].down = None;
-                    //space_graph.graph[get_index(i, j).idx].left = None;
-                    //space_graph.graph[get_index(i, j).idx].right = None;
+                    space_graph.graph[get_index(i, j).idx].disabled = true;
+                    space_graph.graph[get_index(i, j).idx].up = None;
+                    space_graph.graph[get_index(i, j).idx].down = None;
+                    space_graph.graph[get_index(i, j).idx].left = None;
+                    space_graph.graph[get_index(i, j).idx].right = None;
                 }
             }
         }
@@ -1008,7 +1008,7 @@ impl Mesh {
             }
         }
 
-        /*self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
+        self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
         self.dihedral_springs.retain(|s| 
             !space_graph.graph[s.i1].disabled && 
             !space_graph.graph[s.i2].disabled &&
@@ -1019,7 +1019,7 @@ impl Mesh {
             !space_graph.graph[t.indices[0]].disabled && 
             !space_graph.graph[t.indices[1]].disabled && 
             !space_graph.graph[t.indices[2]].disabled
-        );*/
+        );
 
         // Fill uv buffer
         {
