@@ -898,7 +898,7 @@ impl Mesh {
 
             for i in sizexr..sizex {
                 for j in sizeyr..sizey {
-                    space_graph.graph[get_index(i, j).idx].disabled = true;
+                    //space_graph.graph[get_index(i, j).idx].disabled = true;
                     //space_graph.graph[get_index(i, j).idx].up = None;
                     //space_graph.graph[get_index(i, j).idx].down = None;
                     //space_graph.graph[get_index(i, j).idx].left = None;
@@ -1008,14 +1008,14 @@ impl Mesh {
             }
         }
 
-        self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
+        /*self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
         self.dihedral_springs.retain(|s| 
             !space_graph.graph[s.i1].disabled && 
             !space_graph.graph[s.i2].disabled &&
             !space_graph.graph[s.i3].disabled &&
             !space_graph.graph[s.i4].disabled
         );
-        /*self.triangles.retain(|t|
+        self.triangles.retain(|t|
             !space_graph.graph[t.indices[0]].disabled && 
             !space_graph.graph[t.indices[1]].disabled && 
             !space_graph.graph[t.indices[2]].disabled
