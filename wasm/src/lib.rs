@@ -249,11 +249,36 @@ fn calc_forces(
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
+#[derive(Copy, Clone)]
+struct SpaceParticleLink {
+    idx: usize,
+    flipvertical: bool,
+    fliphorizontal: bool,
+}
+
+impl SpaceParticleLink {
+    fn new(idx: usize) -> SpaceParticleLink {
+        SpaceParticleLink {
+            idx: idx,
+            flipvertical: false,
+            fliphorizontal: false,
+        }
+    }
+
+    fn apply(self, other: SpaceParticleLink) -> SpaceParticleLink {
+        SpaceParticleLink {
+            idx: self.idx,
+            flipvertical: self.flipvertical ^ other.flipvertical,
+            fliphorizontal: self.fliphorizontal ^ other.fliphorizontal,
+        }
+    }
+}
+
 struct SpaceParticle {
-    left: Option<usize>,
-    right: Option<usize>,
-    down: Option<usize>,
-    up: Option<usize>,
+    left: Option<SpaceParticleLink>,
+    right: Option<SpaceParticleLink>,
+    down: Option<SpaceParticleLink>,
+    up: Option<SpaceParticleLink>,
 
     uv: HashSet<(usize, usize)>,
 
@@ -269,37 +294,113 @@ struct SpaceGraph {
 // a bracketed direction means reverse
 macro_rules! sg_at_dir {
     ($graph:expr, $idx:expr, R) => {
-        $graph.graph[$idx].right
+        {
+            let idx = $idx;
+            (if $idx.fliphorizontal {
+                $graph.graph[idx.idx].left
+            } else {
+                $graph.graph[idx.idx].right
+            }).map(|p| p.apply(idx))
+        }
     };
     ($graph:expr, $idx:expr, U) => {
-        $graph.graph[$idx].up
+        {
+            let idx = $idx;
+            (if $idx.flipvertical {
+                $graph.graph[idx.idx].down
+            } else {
+                $graph.graph[idx.idx].up
+            }).map(|p| p.apply(idx))
+        }
     };
     ($graph:expr, $idx:expr, D) => {
-        $graph.graph[$idx].down
+        {
+            let idx = $idx;
+            (if $idx.flipvertical {
+                $graph.graph[idx.idx].up
+            } else {
+                $graph.graph[idx.idx].down
+            }).map(|p| p.apply(idx))
+        }
     };
     ($graph:expr, $idx:expr, L) => {
-        $graph.graph[$idx].left
+        {
+            let idx = $idx;
+            (if $idx.fliphorizontal {
+                $graph.graph[idx.idx].right
+            } else {
+                $graph.graph[idx.idx].left
+            }).map(|p| p.apply(idx))
+        }
     };
     ($graph:expr, $idx:expr, [R]) => {
-        $graph.graph[$idx].left
+        sg_at_dir!($graph, $idx, L)
     };
     ($graph:expr, $idx:expr, [U]) => {
-        $graph.graph[$idx].down
+        sg_at_dir!($graph, $idx, D)
     };
     ($graph:expr, $idx:expr, [D]) => {
-        $graph.graph[$idx].up
+        sg_at_dir!($graph, $idx, U)
     };
     ($graph:expr, $idx:expr, [L]) => {
-        $graph.graph[$idx].right
+        sg_at_dir!($graph, $idx, R)
     };
     ($graph:expr, $idx:expr, [[$dir:tt]]) => {
+        // just in case
         sg_at_dir!($graph, $idx, $dir)
+    };
+}
+
+macro_rules! sg_set_at_dir {
+    ($graph:expr, $idx:expr, R, $val:expr) => {
+        if $idx.fliphorizontal {
+            $graph.graph[$idx.idx].left = $val
+        } else {
+            $graph.graph[$idx.idx].right = $val
+        }
+    };
+    ($graph:expr, $idx:expr, U, $val:expr) => {
+        if $idx.flipvertical {
+            $graph.graph[$idx.idx].down = $val
+        } else {
+            $graph.graph[$idx.idx].up = $val
+        }
+    };
+    ($graph:expr, $idx:expr, D, $val:expr) => {
+        if $idx.flipvertical {
+            $graph.graph[$idx.idx].up = $val
+        } else {
+            $graph.graph[$idx.idx].down = $val
+        }
+    };
+    ($graph:expr, $idx:expr, L, $val:expr) => {
+        if $idx.fliphorizontal {
+            $graph.graph[$idx.idx].right = $val
+        } else {
+            $graph.graph[$idx.idx].left = $val
+        }
+    };
+    ($graph:expr, $idx:expr, [R], $val:expr) => {
+        sg_set_at_dir!($graph, $idx, L, $val)
+    };
+    ($graph:expr, $idx:expr, [U], $val:expr) => {
+        sg_set_at_dir!($graph, $idx, D, $val)
+    };
+    ($graph:expr, $idx:expr, [D], $val:expr) => {
+        sg_set_at_dir!($graph, $idx, U, $val)
+    };
+    ($graph:expr, $idx:expr, [L], $val:expr) => {
+        sg_set_at_dir!($graph, $idx, R, $val)
+    };
+    ($graph:expr, $idx:expr, [[$dir:tt]], $val:expr) => {
+        // just in case
+        sg_set_at_dir!($graph, $idx, $dir, $val)
     };
 }
 
 macro_rules! sg_process_move {
     ($graph:expr, $idx:expr, $move:tt) => {
-        sg_at_dir!($graph, $idx, $move).unwrap()
+        sg_at_dir!($graph, $idx, $move)?
     };
 }
 
@@ -310,26 +411,61 @@ macro_rules! sg_mv_ {
     };
 }
 
+macro_rules! sg_mv_try {
+    ($graph:expr, $idx:expr, $($moves:tt)*) => {
+        (|| Some(sg_mv_!($graph, $idx, $($moves)*)))()
+    };
+}
+
 macro_rules! sg_mv {
     ($graph:expr, $idx:expr, $($moves:tt)*) => {
-        sg_mv_!($graph, $idx, $($moves)*)
+        sg_mv_try!($graph, $idx, $($moves)*).unwrap()
     };
 }
 
 macro_rules! sg_connect {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
-        sg_at_dir!($graph, $idx1, $dir) = Some($idx2);
-        sg_at_dir!($graph, $idx2, [$dir]) = Some($idx1);
-    }
+        sg_set_at_dir!($graph, $idx1, $dir, Some($idx2));
+        sg_set_at_dir!($graph, $idx2, [$dir], Some($idx1));
+    };
+}
+
+macro_rules! sg_connect_flipv_ {
+    ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
+        sg_set_at_dir!($graph, $idx1, $dir, Some($idx2.apply(SpaceParticleLink {idx: 0, flipvertical: true, fliphorizontal: false})));
+        sg_set_at_dir!($graph, $idx2, [$dir], Some($idx1.apply(SpaceParticleLink {idx: 0, flipvertical: true, fliphorizontal: false})));
+    };
+}
+
+macro_rules! sg_connect_fliph_ {
+    ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
+        sg_set_at_dir!($graph, $idx1, $dir, Some($idx2.apply(SpaceParticleLink {idx: 0, flipvertical: false, fliphorizontal: true})));
+        sg_set_at_dir!($graph, $idx2, [$dir], Some($idx1.apply(SpaceParticleLink {idx: 0, flipvertical: false, fliphorizontal: true})));
+    };
+}
+
+macro_rules! sg_connect_flip {
+    ($graph:expr, $idx1:expr, $idx2:expr, R) => {
+        sg_connect_flipv_!($graph, $idx1, $idx2, R)
+    };
+    ($graph:expr, $idx1:expr, $idx2:expr, U) => {
+        sg_connect_fliph_!($graph, $idx1, $idx2, U)
+    };
+    ($graph:expr, $idx1:expr, $idx2:expr, D) => {
+        sg_connect_fliph_!($graph, $idx1, $idx2, D)
+    };
+    ($graph:expr, $idx1:expr, $idx2:expr, L) => {
+        sg_connect_flipv_!($graph, $idx1, $idx2, L)
+    };
 }
 
 macro_rules! sg_copy_uv {
     ($graph:expr, $idx1:expr, $idx2:expr) => {
         {
-            let uv = $graph.graph[$idx1].uv.clone();
-            $graph.graph[$idx2].uv.extend(uv);
+            let uv = $graph.graph[$idx1.idx].uv.clone();
+            $graph.graph[$idx2.idx].uv.extend(uv);
         }
-    }
+    };
 }
 
 macro_rules! sg_exchange {
@@ -343,7 +479,7 @@ macro_rules! sg_exchange {
 
             sg_exchange_uv!($graph, $idx1, $idx2);
         }
-    }
+    };
 }
 
 macro_rules! sg_disconnect {
@@ -351,10 +487,10 @@ macro_rules! sg_disconnect {
         {
             let i = sg_mv!($graph, $idx, $dir);
 
-            sg_at_dir!($graph, $idx, $dir) = None;
-            sg_at_dir!($graph, i, [$dir]) = None;
+            sg_set_at_dir!($graph, $idx, $dir, None);
+            sg_set_at_dir!($graph, i, [$dir], None);
         }
-    }
+    };
 }
 
 macro_rules! sg_exchange_uv {
@@ -363,7 +499,7 @@ macro_rules! sg_exchange_uv {
             sg_copy_uv!($graph, $idx1, $idx2);
             sg_copy_uv!($graph, $idx2, $idx1);
         }
-    }
+    };
 }
 
 impl SpaceGraph {
@@ -404,8 +540,8 @@ impl SpaceGraph {
         result
     }
 
-    fn get_index(&self, i: usize, j: usize) -> usize {
-        i * self.sizey + j
+    fn get_index(&self, i: usize, j: usize) -> SpaceParticleLink {
+        SpaceParticleLink::new(i * self.sizey + j)
     }
 
     fn make_portal1_scene(&mut self) {
@@ -415,7 +551,7 @@ impl SpaceGraph {
         let end_y = (self.sizey as f32 * 0.6) as usize;
 
         let sizey = self.sizey;
-        let get_index = |i, j| i * sizey + j;
+        let get_index = |i, j| SpaceParticleLink::new(i * sizey + j);
 
         // -------------------------------------------------------------------
 
@@ -442,7 +578,7 @@ impl SpaceGraph {
         let mut end_y = (self.sizey as f32 * 0.6) as usize;
 
         let sizey = self.sizey;
-        let get_index = |i, j| i * sizey + j; // I'm not using method because of stupid borrowing issues, why rust can't handle that
+        let get_index = |i, j| SpaceParticleLink::new(i * sizey + j); // I'm not using method because of stupid borrowing issues, why rust can't handle that
 
         // -------------------------------------------------------------------
 
@@ -650,7 +786,7 @@ impl Mesh {
         }
 
         // Helper function to get index from grid coordinates
-        let get_index = |i, j| i * sizey + j;
+        let get_index = |i, j| SpaceParticleLink::new(i * sizey + j);
 
         let mut space_graph = SpaceGraph::new(sizex, sizey);
 
@@ -662,7 +798,7 @@ impl Mesh {
 
                 sg_connect!(space_graph, l, r, L); // connect left of l to right of r
 
-                sg_at_dir!(space_graph, e, L) = None; // disconnect the "strip" at the far right edge
+                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
 
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
@@ -675,7 +811,7 @@ impl Mesh {
 
                 sg_connect!(space_graph, b, t, D); // connect down of b to up of t
 
-                sg_at_dir!(space_graph, e, D) = None; // disconnect the "strip" at the far top edge
+                sg_set_at_dir!(space_graph, e, D, None); // disconnect the "strip" at the far top edge
 
                 sg_copy_uv!(space_graph, e, b); // add uv coordinates to left edge
             }
@@ -739,9 +875,9 @@ impl Mesh {
                 let r = get_index(sizex - 2, sizey - 1 - j); // right edge
                 let e = sg_mv!(space_graph, r, R); // just past the right edge
 
-                sg_connect!(space_graph, l, r, L); // connect left of l to right of r
+                sg_connect_flip!(space_graph, l, r, L); // connect left of l to right of r
 
-                sg_at_dir!(space_graph, e, L) = None; // disconnect the "strip" at the far right edge
+                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
 
                 sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
@@ -762,31 +898,11 @@ impl Mesh {
             };
         }
 
-        macro_rules! process_move {
-            ($temp:expr, R) => {
-                space_graph.graph[$temp].right?
-            };
-            ($temp:expr, U) => {
-                space_graph.graph[$temp].up?
-            };
-            ($temp:expr, D) => {
-                space_graph.graph[$temp].down?
-            };
-            ($temp:expr, L) => {
-                space_graph.graph[$temp].left?
-            };
-        }
-
         for idx in 0..self.particles.len() {
             macro_rules! mv {
-                () => { idx };
-                ($($moves:tt)*) => {{
-                    let mut temp = idx;
-                    $(
-                        temp = process_move!(temp, $moves);
-                    )*
-                    temp
-                }};
+                ($($moves:tt)*) => {
+                    sg_mv_try!(space_graph, SpaceParticleLink::new(idx), $($moves)*)?.idx
+                };
             }
 
             macro_rules! edge_spring {
@@ -855,38 +971,15 @@ impl Mesh {
             // dihedral_spring!(6, idx, mv!(R U), mv!(R R R R R R D D D D D), mv!(U U U U U U L L L L L));
             // dihedral_spring!(6, mv!(R), mv!(U), mv!(L D L D L D L D L D), mv!(R U R U R U R U R U R U));
 
+
             // Add triangles for drawing
             trying! {
                 if idx == mv!(U R D L) && mv!(U R D L) == mv!(R U L D) {
                     self.triangles.push(Triangle::new(idx, mv!(R), mv!(U)));
+                    self.triangles.push(Triangle::new(mv!(R U), mv!(U), mv!(R)));
                 } else {
                     // eprintln!("TR_RU, idx: {:?}, URDL: {:?}, RULD: {:?}", get_coords(idx), get_coords(mv!(U R D L)), get_coords(mv!(R U L D)));
                     // eprintln!("U: {:?}, UR: {:?}, URD: {:?}, URDL: {:?}", get_coords(mv!(U)), get_coords(mv!(U R)), get_coords(mv!(U R D)), get_coords(mv!(U R D L)));
-                }
-            }
-            trying! {
-                if idx == mv!(L D R U) && mv!(L D R U) == mv!(D L U R) {
-                    self.triangles.push(Triangle::new(idx, mv!(L), mv!(D)));
-                } else {
-                    // eprintln!("TR_LD, idx: {:?}, LDRU: {:?}, DLUR: {:?}", get_coords(idx), get_coords(mv!(L D R U)), get_coords(mv!(D L U R)));
-                    // eprintln!("L: {:?}, LD: {:?}, LDR: {:?}, LDRU: {:?}", get_coords(mv!(L)), get_coords(mv!(L D)), get_coords(mv!(L D R)), get_coords(mv!(L D R U)));
-                }
-            }
-            // "hack"
-            trying! {
-                if idx == mv!(U R U L) && mv!(U R U L) == mv!(R D L D) {
-                    self.triangles.push(Triangle::new(idx, mv!(R), mv!(U)));
-                } else {
-                    // eprintln!("TR_RU, idx: {:?}, URDL: {:?}, RULD: {:?}", get_coords(idx), get_coords(mv!(U R D L)), get_coords(mv!(R U L D)));
-                    // eprintln!("U: {:?}, UR: {:?}, URD: {:?}, URDL: {:?}", get_coords(mv!(U)), get_coords(mv!(U R)), get_coords(mv!(U R D)), get_coords(mv!(U R D L)));
-                }
-            }
-            trying! {
-                if idx == mv!(L D R D) && mv!(L D R D) == mv!(D L D R) {
-                    self.triangles.push(Triangle::new(idx, mv!(L), mv!(U)));
-                } else {
-                    // eprintln!("TR_LD, idx: {:?}, LDRU: {:?}, DLUR: {:?}", get_coords(idx), get_coords(mv!(L D R U)), get_coords(mv!(D L U R)));
-                    // eprintln!("L: {:?}, LD: {:?}, LDR: {:?}, LDRU: {:?}", get_coords(mv!(L)), get_coords(mv!(L D)), get_coords(mv!(L D R)), get_coords(mv!(L D R U)));
                 }
             }
         }
