@@ -899,10 +899,10 @@ impl Mesh {
             for i in sizexr..sizex {
                 for j in sizeyr..sizey {
                     space_graph.graph[get_index(i, j).idx].disabled = true;
-                    space_graph.graph[get_index(i, j).idx].up = None;
-                    space_graph.graph[get_index(i, j).idx].down = None;
-                    space_graph.graph[get_index(i, j).idx].left = None;
-                    space_graph.graph[get_index(i, j).idx].right = None;
+                    //space_graph.graph[get_index(i, j).idx].up = None;
+                    //space_graph.graph[get_index(i, j).idx].down = None;
+                    //space_graph.graph[get_index(i, j).idx].left = None;
+                    //space_graph.graph[get_index(i, j).idx].right = None;
                 }
             }
         }
