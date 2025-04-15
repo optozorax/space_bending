@@ -1015,11 +1015,11 @@ impl Mesh {
             !space_graph.graph[s.i3].disabled &&
             !space_graph.graph[s.i4].disabled
         );
-        self.triangles.retain(|t|
+        /*self.triangles.retain(|t|
             !space_graph.graph[t.indices[0]].disabled && 
             !space_graph.graph[t.indices[1]].disabled && 
             !space_graph.graph[t.indices[2]].disabled
-        );
+        );*/
 
         // Fill uv buffer
         {
