@@ -862,7 +862,7 @@ impl Mesh {
             // B
             for i in sizexr..sizex {
                 let b = get_index(i, 0); // bottom edge
-                let t = get_index(i, sizeyr - 2); // top edge
+                let t = get_index(i, sizeyr - 1); // top edge
                 let e = sg_mv!(space_graph, t, U); // just past the top edge
 
                 sg_connect!(space_graph, b, t, D); // connect down of b to up of t
@@ -886,7 +886,7 @@ impl Mesh {
             // D
             for j in sizeyr..sizey {
                 let l = get_index(0, j); // left edge
-                let r = get_index(sizexr - 2, j); // right edge
+                let r = get_index(sizexr - 1, j); // right edge
                 let e = sg_mv!(space_graph, r, R); // just past the right edge
 
                 sg_connect!(space_graph, l, r, L); // connect left of l to right of r
