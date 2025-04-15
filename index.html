@@ -305,6 +305,7 @@
                 case "klein_bottle": return 2;
                 case "flat": return 3;
                 case "portal2": return 4;
+                case "genus_2": return 2; // idk
                 default: return 0;
             }
         }
@@ -364,6 +365,7 @@
                 "flat",
                 "mobius_strip",
                 "klein_bottle",
+                "genus_2",
             ]).onChange(value => {
                 createMesh(false);
             });
