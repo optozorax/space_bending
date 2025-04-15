@@ -849,39 +849,51 @@ impl Mesh {
             let sizeyr = (sizey as f32 / ratioy) as usize;
             // A
             for i in 0..sizexr {
-                space_graph.graph[get_index(i, 0).idx].down = Some(get_index(i, sizey - 2));
-                space_graph.graph[get_index(i, sizey - 2).idx].up = Some(get_index(i, 0));
+                let b = get_index(i, 0); // bottom edge
+                let t = get_index(i, sizey - 2); // top edge
+                let e = sg_mv!(space_graph, t, U); // just past the top edge
 
-                let new_uv = space_graph.graph[get_index(i, sizey - 1).idx].uv.clone();
-                space_graph.graph[get_index(i, 0).idx].uv.extend(new_uv);
-                space_graph.graph[get_index(i, sizey - 1).idx].down = None;
+                sg_connect!(space_graph, b, t, D); // connect down of b to up of t
+
+                sg_set_at_dir!(space_graph, e, D, None); // disconnect the "strip" at the far top edge
+
+                sg_copy_uv!(space_graph, e, b); // add uv coordinates to left edge
             }
             // B
             for i in sizexr..sizex {
-                space_graph.graph[get_index(i, 0).idx].down = Some(get_index(i, sizeyr - 2));
-                space_graph.graph[get_index(i, sizeyr - 2).idx].up = Some(get_index(i, 0));
+                let b = get_index(i, 0); // bottom edge
+                let t = get_index(i, sizeyr - 2); // top edge
+                let e = sg_mv!(space_graph, t, U); // just past the top edge
 
-                let new_uv = space_graph.graph[get_index(i, sizeyr - 1).idx].uv.clone();
-                space_graph.graph[get_index(i, 0).idx].uv.extend(new_uv);
-                space_graph.graph[get_index(i, sizeyr - 1).idx].down = None;
+                sg_connect!(space_graph, b, t, D); // connect down of b to up of t
+
+                sg_set_at_dir!(space_graph, e, D, None); // disconnect the "strip" at the far top edge
+
+                sg_copy_uv!(space_graph, e, b); // add uv coordinates to left edge
             }
             // C
             for j in 0..sizeyr {
-                space_graph.graph[get_index(0, j).idx].left = Some(get_index(sizex - 2, j));
-                space_graph.graph[get_index(sizex - 2, j).idx].right = Some(get_index(0, j));
+                let l = get_index(0, j); // left edge
+                let r = get_index(sizex - 2, j); // right edge
+                let e = sg_mv!(space_graph, r, R); // just past the right edge
 
-                let new_uv = space_graph.graph[get_index(sizex - 1, j).idx].uv.clone();
-                space_graph.graph[get_index(0, j).idx].uv.extend(new_uv);
-                space_graph.graph[get_index(sizex - 1, j).idx].left = None;
+                sg_connect!(space_graph, l, r, L); // connect left of l to right of r
+
+                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
+
+                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
             // D
             for j in sizeyr..sizey {
-                space_graph.graph[get_index(0, j).idx].left = Some(get_index(sizexr - 2, j));
-                space_graph.graph[get_index(sizexr - 2, j).idx].right = Some(get_index(0, j));
+                let l = get_index(0, j); // left edge
+                let r = get_index(sizexr - 2, j); // right edge
+                let e = sg_mv!(space_graph, r, R); // just past the right edge
 
-                let new_uv = space_graph.graph[get_index(sizexr - 1, j).idx].uv.clone();
-                space_graph.graph[get_index(0, j).idx].uv.extend(new_uv);
-                space_graph.graph[get_index(sizexr - 1, j).idx].left = None;
+                sg_connect!(space_graph, l, r, L); // connect left of l to right of r
+
+                sg_set_at_dir!(space_graph, e, L, None); // disconnect the "strip" at the far right edge
+
+                sg_copy_uv!(space_graph, e, l); // add uv coordinates to left edge
             }
 
             for i in sizexr..sizex {
