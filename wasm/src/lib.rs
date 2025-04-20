@@ -357,6 +357,55 @@ impl SpaceGraph {
         }
     }
 
+    fn make_negative_portal_scene(&mut self) {
+        let blue_x = (self.sizex as f32 * 0.2) as usize;
+        let orange_x = (self.sizex as f32 * 0.8) as usize;
+        let start_y = (self.sizey as f32 * (0.6)) as usize;
+        let end_y = (self.sizey as f32 * (0.6+(1.-0.2))) as usize;
+
+        let sizey = self.sizey;
+        let get_index = |i, j| (i % self.sizex) * sizey + (j % self.sizey);
+
+        // -------------------------------------------------------------------
+
+        // Disconnect singularity points from up and down
+
+        self.graph[get_index(blue_x, start_y)].down = None;
+        self.graph[get_index(blue_x, start_y - 1)].up = None;
+
+        self.graph[get_index(blue_x, end_y)].up = None;
+        self.graph[get_index(blue_x, end_y + 1)].down = None;
+
+        self.graph[get_index(orange_x, start_y)].down = None;
+        self.graph[get_index(orange_x, start_y - 1)].up = None;
+
+        self.graph[get_index(orange_x, end_y)].up = None;
+        self.graph[get_index(orange_x, end_y + 1)].down = None;
+
+        // -------------------------------------------------------------------
+
+        // Connect the main vertical surface
+
+        for j in start_y..=end_y {
+            let m1 = get_index(blue_x, j);
+            let r1 = get_index(blue_x + 1, j);
+            let m2 = get_index(orange_x, j);
+            let r2 = get_index(orange_x + 1, j);
+
+            self.graph[m1].right = Some(r2);
+            self.graph[r2].left = Some(m1);
+
+            self.graph[m2].right = Some(r1);
+            self.graph[r1].left = Some(m2);
+
+            let new_uv = self.graph[m2].uv.clone();
+            self.graph[m1].uv.extend(new_uv);
+
+            let new_uv = self.graph[m1].uv.clone();
+            self.graph[m2].uv.extend(new_uv);
+        }
+    }
+
     fn make_portal2_scene(&mut self) {
         let mut blue_x = (self.sizex as f32 * 0.2) as usize;
         let mut orange_x = (self.sizex as f32 * 0.8) as usize;
@@ -660,7 +709,7 @@ impl Mesh {
         // Helper function to get index from grid coordinates
         let get_index = |i, j| i * sizey + j;
         let get_index_inv = |i, j| get_index(j, i);
-        // let get_coords = |idx: usize| (idx / sizey, idx % sizey);
+        let get_coords = |idx: usize| (idx / sizey, idx % sizey);
 
         let mut space_graph = SpaceGraph::new(sizex, sizey);
 
@@ -753,6 +802,9 @@ impl Mesh {
         }
         if scene == "portal2" {
             space_graph.make_portal2_scene();
+        }
+        if scene == "negative_portal" {
+            space_graph.make_negative_portal_scene();
         }
 
         macro_rules! trying {
