@@ -353,31 +353,47 @@ macro_rules! sg_at_dir {
 
 macro_rules! sg_set_at_dir {
     ($graph:expr, $idx:expr, R, $val:expr) => {
-        if $idx.fliphorizontal {
-            $graph.graph[$idx.idx].left = $val
-        } else {
-            $graph.graph[$idx.idx].right = $val
+        {
+            let idx = $idx;
+            let val = $val;
+            if $idx.fliphorizontal {
+                $graph.graph[idx.idx].left = val
+            } else {
+                $graph.graph[idx.idx].right = val
+            }
         }
     };
     ($graph:expr, $idx:expr, U, $val:expr) => {
-        if $idx.flipvertical {
-            $graph.graph[$idx.idx].down = $val
-        } else {
-            $graph.graph[$idx.idx].up = $val
+        {
+            let idx = $idx;
+            let val = $val;
+            if $idx.flipvertical {
+                $graph.graph[idx.idx].down = val
+            } else {
+                $graph.graph[idx.idx].up = val
+            }
         }
     };
     ($graph:expr, $idx:expr, D, $val:expr) => {
-        if $idx.flipvertical {
-            $graph.graph[$idx.idx].up = $val
-        } else {
-            $graph.graph[$idx.idx].down = $val
+        {
+            let idx = $idx;
+            let val = $val;
+            if $idx.flipvertical {
+                $graph.graph[idx.idx].up = val
+            } else {
+                $graph.graph[idx.idx].down = val
+            }
         }
     };
     ($graph:expr, $idx:expr, L, $val:expr) => {
-        if $idx.fliphorizontal {
-            $graph.graph[$idx.idx].right = $val
-        } else {
-            $graph.graph[$idx.idx].left = $val
+        {
+            let idx = $idx;
+            let val = $val;
+            if $idx.fliphorizontal {
+                $graph.graph[idx.idx].right = val
+            } else {
+                $graph.graph[idx.idx].left = val
+            }
         }
     };
     ($graph:expr, $idx:expr, [R], $val:expr) => {
@@ -425,22 +441,37 @@ macro_rules! sg_mv {
 
 macro_rules! sg_connect {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
-        sg_set_at_dir!($graph, $idx1, $dir, Some($idx2));
-        sg_set_at_dir!($graph, $idx2, [$dir], Some($idx1));
+        {
+            let idx1 = $idx1;
+            let idx2 = $idx2;
+            sg_set_at_dir!($graph, idx1, $dir, Some(idx2));
+            sg_set_at_dir!($graph, idx2, [$dir], Some(idx1));
+        }
     };
 }
 
+const FLIPV_:SpaceParticleLink = SpaceParticleLink {idx: 0, flipvertical: true, fliphorizontal: false};
+const FLIPH_:SpaceParticleLink = SpaceParticleLink {idx: 0, flipvertical: false, fliphorizontal: true};
+
 macro_rules! sg_connect_flipv_ {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
-        sg_set_at_dir!($graph, $idx1, $dir, Some($idx2.apply(SpaceParticleLink {idx: 0, flipvertical: true, fliphorizontal: false})));
-        sg_set_at_dir!($graph, $idx2, [$dir], Some($idx1.apply(SpaceParticleLink {idx: 0, flipvertical: true, fliphorizontal: false})));
+        {
+            let idx1 = $idx1;
+            let idx2 = $idx2;
+            sg_set_at_dir!($graph, idx1, $dir, Some(idx2.apply(FLIPV_)));
+            sg_set_at_dir!($graph, idx2, [$dir], Some(idx1.apply(FLIPV_)));
+        }
     };
 }
 
 macro_rules! sg_connect_fliph_ {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
-        sg_set_at_dir!($graph, $idx1, $dir, Some($idx2.apply(SpaceParticleLink {idx: 0, flipvertical: false, fliphorizontal: true})));
-        sg_set_at_dir!($graph, $idx2, [$dir], Some($idx1.apply(SpaceParticleLink {idx: 0, flipvertical: false, fliphorizontal: true})));
+        {
+            let idx1 = $idx1;
+            let idx2 = $idx2;
+            sg_set_at_dir!($graph, idx1, $dir, Some(idx2.apply(FLIPH_)));
+            sg_set_at_dir!($graph, idx2, [$dir], Some(idx1.apply(FLIPH_)));
+        }
     };
 }
 
@@ -471,13 +502,16 @@ macro_rules! sg_copy_uv {
 macro_rules! sg_exchange {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
         {
-            let i1 = sg_mv!($graph, $idx1, $dir);
-            let i2 = sg_mv!($graph, $idx2, $dir);
+            let idx1 = $idx1;
+            let idx2 = $idx2;
 
-            sg_connect!($graph, $idx1, i2, $dir);
-            sg_connect!($graph, $idx2, i1, $dir);
+            let i1 = sg_mv!($graph, idx1, $dir);
+            let i2 = sg_mv!($graph, idx2, $dir);
 
-            sg_exchange_uv!($graph, $idx1, $idx2);
+            sg_connect!($graph, idx1, i2, $dir);
+            sg_connect!($graph, idx2, i1, $dir);
+
+            sg_exchange_uv!($graph, idx1, idx2);
         }
     };
 }
@@ -485,9 +519,10 @@ macro_rules! sg_exchange {
 macro_rules! sg_disconnect {
     ($graph:expr, $idx:expr, $dir:tt) => {
         {
-            let i = sg_mv!($graph, $idx, $dir);
+            let idx = $idx;
+            let i = sg_mv!($graph, idx, $dir);
 
-            sg_set_at_dir!($graph, $idx, $dir, None);
+            sg_set_at_dir!($graph, idx, $dir, None);
             sg_set_at_dir!($graph, i, [$dir], None);
         }
     };
@@ -496,8 +531,11 @@ macro_rules! sg_disconnect {
 macro_rules! sg_exchange_uv {
     ($graph:expr, $idx1:expr, $idx2:expr) => {
         {
-            sg_copy_uv!($graph, $idx1, $idx2);
-            sg_copy_uv!($graph, $idx2, $idx1);
+            let idx1 = $idx1;
+            let idx2 = $idx2;
+
+            sg_copy_uv!($graph, idx1, idx2);
+            sg_copy_uv!($graph, idx2, idx1);
         }
     };
 }
