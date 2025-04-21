@@ -332,6 +332,48 @@ vec4 drawCylinderScene(vec2 uv) {
     return result;
 }
 
+// Mobius strip scene
+vec4 drawMobiusScene(vec2 uv) {
+    float thickness = 0.02;
+    
+    // Start with white background
+    vec4 result = whiteColor;
+    
+    // Draw checkerboard patterns
+    vec4 checker2 = drawCheckerboard(uv, 1.0 / size, checkerWhite, checkerBlack);
+    result = alphaBlend(checker2, result);
+    
+    // Draw green squares
+    float sq1Size = 0.3;
+    float sq1Angle = 3.14159 / 3.0;
+    vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
+    
+    vec4 square1 = drawRotatedSquare(uv, vec2(6.0, 1.0 - 0.4), sq1Size, -sq1Angle, sq1Color); // flipped
+    result = alphaBlend(square1, result);
+    
+    vec4 square2 = drawRotatedSquare(uv, vec2(0.0, 0.4), sq1Size, sq1Angle, sq1Color);
+    result = alphaBlend(square2, result);
+    
+    // Draw blue square
+    float sq2Size = 0.4;
+    float sq2Angle = 3.14159 / 1.5;
+    vec4 sq2Color = vec4(128.0/255.0, 128.0/255.0, 1.0, 192.0/255.0);
+    
+    vec4 square3 = drawRotatedSquare(uv, vec2(0.7, 0.9), sq2Size, sq2Angle, sq2Color);
+    result = alphaBlend(square3, result);
+    
+    // Draw lines
+    if (drawPortalSurface == 1) {
+        vec4 blueLine = drawLine(uv, vec2(0.0, 0.0), vec2(0.0, 1.0), thickness, blueColor);
+        result = alphaBlend(blueLine, result);
+        
+        vec4 orangeLine = drawLine(uv, vec2(6.0, 0.0), vec2(6.0, 1.0), thickness, orangeColor);
+        result = alphaBlend(orangeLine, result);
+    }
+    
+    return result;
+}
+
 // Torus scene
 vec4 drawTorusScene(vec2 uv) {
     float thickness = 0.02;
@@ -378,6 +420,58 @@ vec4 drawTorusScene(vec2 uv) {
         result = alphaBlend(redLine, result);
         
         vec4 greenLine = drawLine(uv, vec2(0.0, 1.0), vec2(3.0, 1.0), thickness, greenColor);
+        result = alphaBlend(greenLine, result);
+    }
+    
+    return result;
+}
+
+// Klein bottle scene
+vec4 drawKleinScene(vec2 uv) {
+    float thickness = 0.02;
+    
+    // Start with white background
+    vec4 result = whiteColor;
+    
+    // Draw checkerboard patterns
+    vec4 checker2 = drawCheckerboard(uv, 1.0 / size, checkerWhite, checkerBlack);
+    result = alphaBlend(checker2, result);
+    
+    // Draw green squares
+    float sq1Size = 0.3;
+    float sq1Angle = 3.14159 / 3.0 - anim * 3.1459 * 0.5;
+    vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
+    
+    vec4 square1 = drawRotatedSquare(uv, vec2(1.0, 2.0 - 0.4), sq1Size, -sq1Angle, sq1Color); // flipped
+    result = alphaBlend(square1, result);
+    
+    vec4 square2 = drawRotatedSquare(uv, vec2(0.0, 0.4), sq1Size, sq1Angle, sq1Color);
+    result = alphaBlend(square2, result);
+    
+    // Draw blue squares
+    float sq2Size = 0.4;
+    float sq2Angle = 3.14159 / 1.5 + anim * 3.1459;
+    vec4 sq2Color = vec4(128.0/255.0, 128.0/255.0, 1.0, 192.0/255.0);
+    
+    vec4 square3 = drawRotatedSquare(uv, vec2(0.7, 1.9), sq2Size, sq2Angle, sq2Color);
+    result = alphaBlend(square3, result);
+    
+    vec4 square4 = drawRotatedSquare(uv, vec2(0.7, -0.1), sq2Size, sq2Angle, sq2Color);
+    result = alphaBlend(square4, result);
+    
+    if (drawPortalSurface == 1) {
+        // Draw vertical lines
+        vec4 blueLine = drawLine(uv, vec2(0.0, 0.0), vec2(0.0, 2.0), thickness, blueColor);
+        result = alphaBlend(blueLine, result);
+        
+        vec4 orangeLine = drawLine(uv, vec2(1.0, 0.0), vec2(1.0, 2.0), thickness, orangeColor);
+        result = alphaBlend(orangeLine, result);
+        
+        // Draw horizontal lines
+        vec4 redLine = drawLine(uv, vec2(0.0, 0.0), vec2(1.0, 0.0), thickness, redColor);
+        result = alphaBlend(redLine, result);
+        
+        vec4 greenLine = drawLine(uv, vec2(0.0, 2.0), vec2(1.0, 2.0), thickness, greenColor);
         result = alphaBlend(greenLine, result);
     }
     
@@ -455,6 +549,10 @@ void main() {
             texColor = drawPortal1Scene(texUV, 2. / size);
         } else if (sceneType == 5) {
             texColor = drawNegativePortalScene(texUV);
+        } else if (sceneType == 6) {
+            texColor = drawMobiusScene(texUV);
+        } else if (sceneType == 7) {
+            texColor = drawKleinScene(texUV);
         }
     }
     
