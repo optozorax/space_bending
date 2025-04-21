@@ -250,23 +250,23 @@ fn calc_forces(
 // ---------------------------------------------------------------------------
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-struct SpaceParticleLink {
+struct SpaceParticleView {
     idx: usize,
     flipvertical: bool,
     fliphorizontal: bool,
 }
 
-impl SpaceParticleLink {
-    fn new(idx: usize) -> SpaceParticleLink {
-        SpaceParticleLink {
+impl SpaceParticleView {
+    fn new(idx: usize) -> SpaceParticleView {
+        SpaceParticleView {
             idx: idx,
             flipvertical: false,
             fliphorizontal: false,
         }
     }
 
-    fn apply(self, other: SpaceParticleLink) -> SpaceParticleLink {
-        SpaceParticleLink {
+    fn apply(self, other: SpaceParticleView) -> SpaceParticleView {
+        SpaceParticleView {
             idx: self.idx,
             flipvertical: self.flipvertical ^ other.flipvertical,
             fliphorizontal: self.fliphorizontal ^ other.fliphorizontal,
@@ -275,10 +275,10 @@ impl SpaceParticleLink {
 }
 
 struct SpaceParticle {
-    left: Option<SpaceParticleLink>,
-    right: Option<SpaceParticleLink>,
-    down: Option<SpaceParticleLink>,
-    up: Option<SpaceParticleLink>,
+    left: Option<SpaceParticleView>,
+    right: Option<SpaceParticleView>,
+    down: Option<SpaceParticleView>,
+    up: Option<SpaceParticleView>,
 
     uv: HashSet<(usize, usize)>,
 
@@ -450,8 +450,8 @@ macro_rules! sg_connect {
     };
 }
 
-const FLIPV_:SpaceParticleLink = SpaceParticleLink {idx: 0, flipvertical: true, fliphorizontal: false};
-const FLIPH_:SpaceParticleLink = SpaceParticleLink {idx: 0, flipvertical: false, fliphorizontal: true};
+const FLIPV_:SpaceParticleView = SpaceParticleView {idx: 0, flipvertical: true, fliphorizontal: false};
+const FLIPH_:SpaceParticleView = SpaceParticleView {idx: 0, flipvertical: false, fliphorizontal: true};
 
 macro_rules! sg_connect_flipv_ {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
@@ -578,8 +578,8 @@ impl SpaceGraph {
         result
     }
 
-    fn get_index(&self, i: usize, j: usize) -> SpaceParticleLink {
-        SpaceParticleLink::new(i * self.sizey + j)
+    fn get_index(&self, i: usize, j: usize) -> SpaceParticleView {
+        SpaceParticleView::new(i * self.sizey + j)
     }
 
     fn make_portal1_scene(&mut self) {
@@ -589,7 +589,7 @@ impl SpaceGraph {
         let end_y = (self.sizey as f32 * 0.6) as usize;
 
         let sizey = self.sizey;
-        let get_index = |i, j| SpaceParticleLink::new(i * sizey + j);
+        let get_index = |i, j| SpaceParticleView::new(i * sizey + j);
 
         // -------------------------------------------------------------------
 
@@ -616,7 +616,7 @@ impl SpaceGraph {
         let end_y = (self.sizey as f32 * (0.6+(1.-0.2))) as usize;
 
         let sizey = self.sizey;
-        let get_index = |i, j| SpaceParticleLink::new((i % self.sizex) * sizey + (j % self.sizey));
+        let get_index = |i, j| SpaceParticleView::new((i % self.sizex) * sizey + (j % self.sizey));
 
         // -------------------------------------------------------------------
 
@@ -643,7 +643,7 @@ impl SpaceGraph {
         let mut end_y = (self.sizey as f32 * 0.6) as usize;
 
         let sizey = self.sizey;
-        let get_index = |i, j| SpaceParticleLink::new(i * sizey + j); // I'm not using method because of stupid borrowing issues, why rust can't handle that
+        let get_index = |i, j| SpaceParticleView::new(i * sizey + j); // I'm not using method because of stupid borrowing issues, why rust can't handle that
 
         // -------------------------------------------------------------------
 
@@ -722,7 +722,7 @@ impl SpaceGraph {
 
         // Initialize BFS queue starting with both graphs' node 0
         let mut queue = VecDeque::new();
-        queue.push_back((SpaceParticleLink::new(0), SpaceParticleLink::new(0))); // (self_index, other_index)
+        queue.push_back((SpaceParticleView::new(0), SpaceParticleView::new(0))); // (self_index, other_index)
 
         // Keep track of visited nodes and mappings between graph indices
         let mut visited = HashSet::new();
@@ -758,7 +758,7 @@ impl SpaceGraph {
     }
 
     /// Helper to check if direction connections match in pattern
-    fn check_direction_match(&self, self_dir: Option<SpaceParticleLink>, other_dir: Option<SpaceParticleLink>) -> bool {
+    fn check_direction_match(&self, self_dir: Option<SpaceParticleView>, other_dir: Option<SpaceParticleView>) -> bool {
         // Both should either have a connection or not have a connection
         self_dir.is_some() == other_dir.is_some()
     }
@@ -766,9 +766,9 @@ impl SpaceGraph {
     /// Helper to add connected nodes to the queue
     fn add_to_queue_if_connected(
         &self,
-        queue: &mut VecDeque<(SpaceParticleLink, SpaceParticleLink)>,
-        self_dir: Option<SpaceParticleLink>,
-        other_dir: Option<SpaceParticleLink>,
+        queue: &mut VecDeque<(SpaceParticleView, SpaceParticleView)>,
+        self_dir: Option<SpaceParticleView>,
+        other_dir: Option<SpaceParticleView>,
     ) {
         if let (Some(self_next), Some(other_next)) = (self_dir, other_dir) {
             queue.push_back((self_next, other_next));
@@ -847,7 +847,7 @@ impl Mesh {
         }
 
         // Helper function to get index from grid coordinates
-        let get_index = |i, j| SpaceParticleLink::new(i * sizey + j);
+        let get_index = |i, j| SpaceParticleView::new(i * sizey + j);
         let get_coords = |idx: usize| (idx / sizey, idx % sizey);
 
         let mut space_graph = SpaceGraph::new(sizex, sizey);
@@ -990,7 +990,7 @@ impl Mesh {
         for idx in 0..self.particles.len() {
             macro_rules! mv {
                 ($($moves:tt)*) => {
-                    sg_mv_try!(space_graph, SpaceParticleLink::new(idx), $($moves)*)?.idx
+                    sg_mv_try!(space_graph, SpaceParticleView::new(idx), $($moves)*)?.idx
                 };
             }
 
