@@ -115,6 +115,10 @@
                     guidata.ratio = 0.5;
                     guidata.size = 50;
                     constants.iterations = 2;
+                if (guidata.scene == "negative_portal") {
+                    guidata.ratio = 1.;
+                    guidata.size = 50;
+                    constants.iterations = 3;
                 }
             }
 
@@ -301,6 +305,7 @@
                 case "flat": return 3;
                 case "portal2": return 4;
                 case "genus_2": return 2; // idk
+                case "negative_portal": return 5;
                 default: return 0;
             }
         }
@@ -355,6 +360,7 @@
             gui.add(guidata, "scene", [
                 "portal1",
                 "portal2",
+                "negative_portal",
                 "cylinder",
                 "torus",
                 "flat",

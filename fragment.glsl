@@ -194,6 +194,102 @@ vec4 drawPortal1Scene(vec2 uv, float offset) {
     return result;
 }
 
+vec4 drawNegativePortalScene(vec2 uv) {
+    float blueX = 0.2;
+    float orangeX = 0.8;
+    float startY = 0.4;
+    float endY = 0.6;
+    float thickness = 0.005;
+    
+    // Start with white background
+    vec4 result = whiteColor;
+    
+    // Draw checkerboard patterns
+    vec4 checker2 = drawCheckerboard(uv, 1.0 / size, checkerWhite, checkerBlack);
+    result = alphaBlend(checker2, result);
+    
+    // Draw green squares
+    float anim_easing = easing_in_out(anim * 2.) * 2. - 1.;
+
+    float sq1Size = 0.1;
+    float sq1Angle = 3.14159 / 4.0 + anim_easing;
+    vec4 sq1Color = vec4(0.0, 1.0, 0.0, 192.0/255.0);
+    
+    // Only draw if uv.x is less than center.x (discardRight = true)
+    if (uv.x <= blueX) {
+        vec4 square1 = drawRotatedSquare(uv, vec2(blueX + anim_easing * 0.13, endY + startY / 2.0), 
+                                        sq1Size, sq1Angle, sq1Color);
+        result = alphaBlend(square1, result);
+    }
+    
+    // Only draw if uv.x is greater than center.x (discardLeft = true)
+    if (uv.x >= orangeX) {
+        vec4 square2 = drawRotatedSquare(uv, vec2(orangeX + anim_easing * 0.13, endY + startY / 2.0), 
+                                        sq1Size, sq1Angle, sq1Color);
+        result = alphaBlend(square2, result);
+    }
+    
+    // Draw blue squares
+    float sq2Size = 0.09;
+    float sq2Angle = 3.14159 / 3.0;
+    vec4 sq2Color = vec4(128.0/255.0, 128.0/255.0, 1.0, 192.0/255.0);
+
+    float anim_2 = anim * 2. - 1.;
+    
+    // Only draw if uv.x is greater than center.x (discardLeft = true)
+    if (uv.x >= blueX) {
+        vec4 square3 = drawRotatedSquare(uv, vec2(blueX - 0.02 - anim_2*0.3, endY + startY / 2.0 + 0.01), 
+                                        sq2Size, sq2Angle, sq2Color);
+        result = alphaBlend(square3, result);
+    }
+    
+    // Only draw if uv.x is less than center.x (discardRight = true)
+    if (uv.x <= orangeX) {
+        vec4 square4 = drawRotatedSquare(uv, vec2(orangeX - 0.02 - anim_2*0.3, endY + startY / 2.0 + 0.01), 
+                                        sq2Size, sq2Angle, sq2Color);
+        result = alphaBlend(square4, result);
+    }
+
+    float sq3Size = 0.1;
+    float sq3Angle = 3.14159 / 4.0 + anim_easing;
+    vec4 sq3Color = vec4(1.0, 0.0, 0.0, 192.0/255.0);
+    
+    // Only draw if uv.x is less than center.x (discardRight = true)
+    vec4 square3 = drawRotatedSquare(uv, vec2(0.5 + anim_easing * 0.43, (endY + startY) / 2.0), 
+                                    sq3Size, sq3Angle, sq3Color);
+    result = alphaBlend(square3, result);
+    
+    // Draw blue portal
+    vec4 blueCircle1 = drawCircle(uv, vec2(blueX, startY), thickness * 1.5, blueColor);
+    result = alphaBlend(blueCircle1, result);
+    
+    vec4 blueCircle2 = drawCircle(uv, vec2(blueX, endY), thickness * 1.5, blueColor);
+    result = alphaBlend(blueCircle2, result);
+    
+    if (drawPortalSurface == 1) {
+        vec4 blueLine = drawLine(uv, vec2(blueX, -0.1), vec2(blueX, startY), thickness, blueColor);
+        result = alphaBlend(blueLine, result);
+        blueLine = drawLine(uv, vec2(blueX, endY), vec2(blueX, 1.1), thickness, blueColor);
+        result = alphaBlend(blueLine, result);
+    }
+    
+    // Draw orange portal
+    vec4 orangeCircle1 = drawCircle(uv, vec2(orangeX, startY), thickness * 1.5, orangeColor);
+    result = alphaBlend(orangeCircle1, result);
+    
+    vec4 orangeCircle2 = drawCircle(uv, vec2(orangeX, endY), thickness * 1.5, orangeColor);
+    result = alphaBlend(orangeCircle2, result);
+    
+    if (drawPortalSurface == 1) {
+        vec4 orangeLine = drawLine(uv, vec2(orangeX, -0.1), vec2(orangeX, startY), thickness, orangeColor);
+        result = alphaBlend(orangeLine, result);
+        orangeLine = drawLine(uv, vec2(orangeX, endY), vec2(orangeX, 1.1), thickness, orangeColor);
+        result = alphaBlend(orangeLine, result);
+    }
+    
+    return result;
+}
+
 // Cylinder scene
 vec4 drawCylinderScene(vec2 uv) {
     float thickness = 0.02;
@@ -357,6 +453,8 @@ void main() {
             texColor = drawFlatScene(texUV);
         } else if (sceneType == 4) {
             texColor = drawPortal1Scene(texUV, 2. / size);
+        } else if (sceneType == 5) {
+            texColor = drawNegativePortalScene(texUV);
         }
     }
     
