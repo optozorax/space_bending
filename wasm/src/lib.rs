@@ -256,6 +256,8 @@ struct SpaceParticleView {
     fliphorizontal: bool,
 }
 
+// part of the better graph visitor
+// keeps track of orientation (flip vertically (and horizontally if you want))
 impl SpaceParticleView {
     fn new(idx: usize) -> SpaceParticleView {
         SpaceParticleView {
@@ -291,7 +293,8 @@ struct SpaceGraph {
     sizey: usize,
 }
 
-// a bracketed direction means reverse
+// get the particle in a certain direction from $idx in $graph (actually a SpaceParticleView)
+// a bracketed direction means reverse ([L] = R)
 macro_rules! sg_at_dir {
     ($graph:expr, $idx:expr, R) => {
         {
@@ -351,6 +354,9 @@ macro_rules! sg_at_dir {
     };
 }
 
+// same as sg_at_dir!() but sets the link instead of getting it
+// not sure why this can't have shared code with sg_at_dir!() to get a reference to a link
+// but oh well....
 macro_rules! sg_set_at_dir {
     ($graph:expr, $idx:expr, R, $val:expr) => {
         {
@@ -414,31 +420,34 @@ macro_rules! sg_set_at_dir {
     };
 }
 
-macro_rules! sg_process_move {
-    ($graph:expr, $idx:expr, $move:tt) => {
-        sg_at_dir!($graph, $idx, $move)?
-    };
-}
-
+// basically mv!() from the original
+// should be wrapped inside a function returning Option<SpaceParticleView>
 macro_rules! sg_mv_ {
     ($graph:expr, $idx:expr, ) => {$idx};
     ($graph:expr, $idx:expr, $move:tt $($moves:tt)*) => {
-        sg_mv_!($graph, sg_process_move!($graph, $idx, $move), $($moves)*)
+        sg_mv_!($graph, sg_at_dir!($graph, $idx, $move)?, $($moves)*)
     };
 }
 
+// takes the SpaceGraph and particle index + orientation
+// returns Some(idx) if the path does not pass through nonexistent edges
+// otherwise None
 macro_rules! sg_mv_try {
     ($graph:expr, $idx:expr, $($moves:tt)*) => {
         (|| Some(sg_mv_!($graph, $idx, $($moves)*)))()
     };
 }
 
+// similar but it errors if you try to access a nonexistent edge
+// also it returns just SpaceParticleView insteas of Option<SpaceParticleView>
 macro_rules! sg_mv {
     ($graph:expr, $idx:expr, $($moves:tt)*) => {
         sg_mv_try!($graph, $idx, $($moves)*).unwrap()
     };
 }
 
+// connect from idx1 to idx2 so that the dir connection of idx1 is used
+// no rotation or flip
 macro_rules! sg_connect {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
         {
@@ -453,6 +462,8 @@ macro_rules! sg_connect {
 const FLIPV_:SpaceParticleView = SpaceParticleView {idx: 0, flipvertical: true, fliphorizontal: false};
 const FLIPH_:SpaceParticleView = SpaceParticleView {idx: 0, flipvertical: false, fliphorizontal: true};
 
+// connect two SpaceParticles but add a vertical flip (for non orientability)
+// connects L to R etc.
 macro_rules! sg_connect_flipv_ {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
         {
@@ -464,6 +475,8 @@ macro_rules! sg_connect_flipv_ {
     };
 }
 
+// connect two SpaceParticles but add a horizontal flip (for non orientability)
+// connects U to D etc.
 macro_rules! sg_connect_fliph_ {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
         {
@@ -475,6 +488,10 @@ macro_rules! sg_connect_fliph_ {
     };
 }
 
+// connect two SpaceParticles but add a flip (for non orientability)
+// depending on the direction given
+// flips vertically if the direction is L or R
+// otherwise horizontally
 macro_rules! sg_connect_flip {
     ($graph:expr, $idx1:expr, $idx2:expr, R) => {
         sg_connect_flipv_!($graph, $idx1, $idx2, R)
@@ -490,6 +507,7 @@ macro_rules! sg_connect_flip {
     };
 }
 
+// copy the uv coordinates from one SpaceParticle to another
 macro_rules! sg_copy_uv {
     ($graph:expr, $idx1:expr, $idx2:expr) => {
         {
@@ -499,6 +517,21 @@ macro_rules! sg_copy_uv {
     };
 }
 
+// copy the uv both ways between two SpaceParticles
+macro_rules! sg_exchange_uv {
+    ($graph:expr, $idx1:expr, $idx2:expr) => {
+        {
+            let idx1 = $idx1;
+            let idx2 = $idx2;
+
+            sg_copy_uv!($graph, idx1, idx2);
+            sg_copy_uv!($graph, idx2, idx1);
+        }
+    };
+}
+
+// exchanges the edges in a certain direction between two SpaceParticles
+// handles the uv as well
 macro_rules! sg_exchange {
     ($graph:expr, $idx1:expr, $idx2:expr, $dir:tt) => {
         {
@@ -516,6 +549,7 @@ macro_rules! sg_exchange {
     };
 }
 
+// disconnect a SpaceParticle from the one on a certain direction and vice versa
 macro_rules! sg_disconnect {
     ($graph:expr, $idx:expr, $dir:tt) => {
         {
@@ -524,18 +558,6 @@ macro_rules! sg_disconnect {
 
             sg_set_at_dir!($graph, idx, $dir, None);
             sg_set_at_dir!($graph, i, [$dir], None);
-        }
-    };
-}
-
-macro_rules! sg_exchange_uv {
-    ($graph:expr, $idx1:expr, $idx2:expr) => {
-        {
-            let idx1 = $idx1;
-            let idx2 = $idx2;
-
-            sg_copy_uv!($graph, idx1, idx2);
-            sg_copy_uv!($graph, idx2, idx1);
         }
     };
 }
