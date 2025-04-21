@@ -616,45 +616,23 @@ impl SpaceGraph {
         let end_y = (self.sizey as f32 * (0.6+(1.-0.2))) as usize;
 
         let sizey = self.sizey;
-        let get_index = |i, j| (i % self.sizex) * sizey + (j % self.sizey);
+        let get_index = |i, j| SpaceParticleLink::new((i % self.sizex) * sizey + (j % self.sizey));
 
         // -------------------------------------------------------------------
 
         // Disconnect singularity points from up and down
 
-        self.graph[get_index(blue_x, start_y)].down = None;
-        self.graph[get_index(blue_x, start_y - 1)].up = None;
-
-        self.graph[get_index(blue_x, end_y)].up = None;
-        self.graph[get_index(blue_x, end_y + 1)].down = None;
-
-        self.graph[get_index(orange_x, start_y)].down = None;
-        self.graph[get_index(orange_x, start_y - 1)].up = None;
-
-        self.graph[get_index(orange_x, end_y)].up = None;
-        self.graph[get_index(orange_x, end_y + 1)].down = None;
+        sg_disconnect!(self, get_index(blue_x, start_y), D);
+        sg_disconnect!(self, get_index(blue_x, end_y), U);
+        sg_disconnect!(self, get_index(orange_x, start_y), D);
+        sg_disconnect!(self, get_index(orange_x, end_y), U);
 
         // -------------------------------------------------------------------
 
         // Connect the main vertical surface
 
         for j in start_y..=end_y {
-            let m1 = get_index(blue_x, j);
-            let r1 = get_index(blue_x + 1, j);
-            let m2 = get_index(orange_x, j);
-            let r2 = get_index(orange_x + 1, j);
-
-            self.graph[m1].right = Some(r2);
-            self.graph[r2].left = Some(m1);
-
-            self.graph[m2].right = Some(r1);
-            self.graph[r1].left = Some(m2);
-
-            let new_uv = self.graph[m2].uv.clone();
-            self.graph[m1].uv.extend(new_uv);
-
-            let new_uv = self.graph[m1].uv.clone();
-            self.graph[m2].uv.extend(new_uv);
+            sg_exchange!(self, get_index(blue_x, j), get_index(orange_x, j), R);
         }
     }
 
