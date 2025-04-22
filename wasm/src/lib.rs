@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
+use std::collections::VecDeque;
 use std::ops::{Add, Mul, Sub};
 use wasm_bindgen::prelude::*;
 
@@ -281,7 +282,7 @@ struct SpaceParticle {
     down: Option<SpaceParticleView>,
     up: Option<SpaceParticleView>,
 
-    uv: HashSet<(usize, usize)>,
+    uv: BTreeSet<(usize, usize)>,
 
     disabled: bool,
 }
@@ -603,7 +604,7 @@ impl SpaceGraph {
         SpaceParticleView::new(i * self.sizey + j)
     }
 
-    fn make_portal1_scene(&mut self) {
+    fn make_portal1_scene(&mut self, identify_points: &mut Vec<(usize, usize)>) {
         let blue_x = (self.sizex as f32 * 0.2) as usize;
         let orange_x = (self.sizex as f32 * 0.8) as usize;
         let start_y = (self.sizey as f32 * 0.4) as usize;
@@ -621,6 +622,9 @@ impl SpaceGraph {
         sg_disconnect!(self, get_index(orange_x, start_y), D);
         sg_disconnect!(self, get_index(orange_x, end_y), U);
 
+        identify_points.push((get_index(blue_x, start_y), get_index(orange_x, start_y)));
+        identify_points.push((get_index(blue_x, end_y), get_index(orange_x, end_y)));
+
         // -------------------------------------------------------------------
 
         // Connect the main vertical surface
@@ -630,7 +634,7 @@ impl SpaceGraph {
         }
     }
 
-    fn make_negative_portal_scene(&mut self) {
+    fn make_negative_portal_scene(&mut self, identify_points: &mut Vec<(usize, usize)>) {
         let blue_x = (self.sizex as f32 * 0.2) as usize;
         let orange_x = (self.sizex as f32 * 0.8) as usize;
         let start_y = (self.sizey as f32 * (0.6)) as usize;
@@ -648,6 +652,9 @@ impl SpaceGraph {
         sg_disconnect!(self, get_index(orange_x, start_y), D);
         sg_disconnect!(self, get_index(orange_x, end_y), U);
 
+        identify_points.push((get_index(blue_x, start_y), get_index(orange_x, start_y)));
+        identify_points.push((get_index(blue_x, end_y), get_index(orange_x, end_y)));
+
         // -------------------------------------------------------------------
 
         // Connect the main vertical surface
@@ -657,7 +664,7 @@ impl SpaceGraph {
         }
     }
 
-    fn make_portal2_scene(&mut self) {
+    fn make_portal2_scene(&mut self, identify_points: &mut Vec<(usize, usize)>) {
         let mut blue_x = (self.sizex as f32 * 0.2) as usize;
         let mut orange_x = (self.sizex as f32 * 0.8) as usize;
         let mut start_y = (self.sizey as f32 * 0.4) as usize;
@@ -674,6 +681,9 @@ impl SpaceGraph {
         sg_disconnect!(self, get_index(blue_x, end_y), U);
         sg_disconnect!(self, get_index(orange_x, start_y), D);
         sg_disconnect!(self, get_index(orange_x, end_y), U);
+
+        identify_points.push((get_index(blue_x, start_y), get_index(orange_x, start_y)));
+        identify_points.push((get_index(blue_x, end_y), get_index(orange_x, end_y)));
 
         // -------------------------------------------------------------------
 
@@ -746,6 +756,8 @@ pub struct Mesh {
     // Buffer for triangle data
     triangle_buffer: Vec<f32>,
     uv_buffer: Vec<f32>,
+
+    identify_points: Vec<(usize, usize)>,
 }
 
 impl Mesh {
@@ -766,6 +778,7 @@ impl Mesh {
 
             triangle_buffer: Vec::new(),
             uv_buffer: Vec::new(),
+            identify_points: Vec::new(),
         }
     }
 
@@ -795,7 +808,7 @@ impl Mesh {
 
         // Helper function to get index from grid coordinates
         let get_index = |i, j| SpaceParticleView::new(i * sizey + j);
-        let get_coords = |idx: usize| (idx / sizey, idx % sizey);
+        //let get_coords = |idx: SpaceParticleView| (idx.idx / sizey, idx.idx % sizey);
 
         let mut space_graph = SpaceGraph::new(sizex, sizey);
 
@@ -916,13 +929,13 @@ impl Mesh {
             }
         }
         if scene == "portal1" {
-            space_graph.make_portal1_scene();
+            space_graph.make_portal1_scene(&mut self.identify_points);
         }
         if scene == "portal2" {
-            space_graph.make_portal2_scene();
+            space_graph.make_portal2_scene(&mut self.identify_points);
         }
         if scene == "negative_portal" {
-            space_graph.make_negative_portal_scene();
+            space_graph.make_negative_portal_scene(&mut self.identify_points);
         }
 
         macro_rules! trying {
@@ -932,6 +945,23 @@ impl Mesh {
                     Some(())
                 })();
             };
+        }
+
+        macro_rules! trying_with_else {
+            // two–arm version: {body} else {on_none}
+            ({ $($body:tt)* } else { $($on_none:tt)* }) => {{
+                let __res = (|| -> Option<()> {
+                    $($body)*
+                    Some(())
+                })();
+
+                if __res.is_none() {
+                    (|| -> Option<()> {
+                        $($on_none)*
+                        Some(())
+                    })();
+                }
+            }};
         }
 
         for idx in 0..self.particles.len() {
@@ -959,7 +989,7 @@ impl Mesh {
             edge_spring!(idx, mv!(R U), diagonal_len);
             edge_spring!(mv!(R), mv!(U), diagonal_len);
 
-            // // Add dihedral springs of distance 1
+            // Add dihedral springs of distance 1
             dihedral_spring!(1, idx, mv!(U), mv!(R), mv!(U L));
             dihedral_spring!(1, idx, mv!(U), mv!(L), mv!(U R));
             dihedral_spring!(1, idx, mv!(R), mv!(D), mv!(R U));
@@ -1009,7 +1039,7 @@ impl Mesh {
 
 
             // Add triangles for drawing
-            trying! {
+            trying_with_else! {{
                 if idx == mv!(U R D L) && mv!(U R D L) == mv!(R U L D) {
                     self.triangles.push(Triangle::new(idx, mv!(R), mv!(U)));
                     self.triangles.push(Triangle::new(mv!(R U), mv!(U), mv!(R)));
@@ -1017,7 +1047,27 @@ impl Mesh {
                     // eprintln!("TR_RU, idx: {:?}, URDL: {:?}, RULD: {:?}", get_coords(idx), get_coords(mv!(U R D L)), get_coords(mv!(R U L D)));
                     // eprintln!("U: {:?}, UR: {:?}, URD: {:?}, URDL: {:?}", get_coords(mv!(U)), get_coords(mv!(U R)), get_coords(mv!(U R D)), get_coords(mv!(U R D L)));
                 }
-            }
+            } else {
+                if space_graph.graph[idx].up == None {
+                    self.triangles.push(Triangle::new(idx, mv!(R), mv!(R U L)));
+                } else {
+                    self.triangles.push(Triangle::new(idx, mv!(R), mv!(U)));
+                }
+            }}
+            trying_with_else! {{
+                if idx == mv!(L D R U) && mv!(L D R U) == mv!(D L U R) {
+                    self.triangles.push(Triangle::new(idx, mv!(L), mv!(D)));
+                } else {
+                    // eprintln!("TR_LD, idx: {:?}, LDRU: {:?}, DLUR: {:?}", get_coords(idx), get_coords(mv!(L D R U)), get_coords(mv!(D L U R)));
+                    // eprintln!("L: {:?}, LD: {:?}, LDR: {:?}, LDRU: {:?}", get_coords(mv!(L)), get_coords(mv!(L D)), get_coords(mv!(L D R)), get_coords(mv!(L D R U)));
+                }
+            } else {
+                if space_graph.graph[idx].down == None {
+                    self.triangles.push(Triangle::new(idx, mv!(L), mv!(L D R)));
+                } else {
+                    self.triangles.push(Triangle::new(idx, mv!(L), mv!(D)));
+                }
+            }}
         }
 
         self.edge_springs.retain(|s| !space_graph.graph[s.i].disabled && !space_graph.graph[s.j].disabled);
@@ -1126,7 +1176,15 @@ impl Mesh {
         let mut index = 0;
         for triangle in &self.triangles {
             for &idx in &triangle.indices {
-                let pos = self.particles[idx].position - avg;
+                let mut pos = self.particles[idx].position - avg;
+
+                for (first, second) in &self.identify_points {
+                    let avg2 = (self.particles[*first].position + self.particles[*second].position) * 0.5;
+                    if idx == *first || idx == *second {
+                        pos = avg2 - avg;
+                    }
+                }
+
                 self.triangle_buffer[index] = pos.x as f32;
                 self.triangle_buffer[index + 1] = pos.y as f32;
                 self.triangle_buffer[index + 2] = pos.z as f32;
@@ -1435,10 +1493,11 @@ mod tests {
     #[test]
     fn same_graph() {
         let mut graph1 = SpaceGraph::new(50, 50);
-        graph1.make_portal1_scene();
+        let mut identify_points = Vec::new();
+        graph1.make_portal1_scene(&mut identify_points);
 
         let mut graph2 = SpaceGraph::new(50, 50);
-        graph2.make_portal2_scene();
+        graph2.make_portal2_scene(&mut identify_points);
 
         assert!(graph1.is_equal_to(&graph2));
     }
