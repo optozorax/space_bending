@@ -1366,7 +1366,7 @@ mod tests {
 
             // Initialize BFS queue starting with both graphs' node 0
             let mut queue = VecDeque::new();
-            queue.push_back((0, 0)); // (self_index, other_index)
+            queue.push_back((SpaceParticleView::new(0), SpaceParticleView::new(0))); // (self_index, other_index)
 
             // Keep track of visited nodes and mappings between graph indices
             let mut visited = HashSet::new();
@@ -1381,24 +1381,20 @@ mod tests {
                 // Store the mapping
                 index_mapping.insert(self_idx, other_idx);
 
-                // Get the particles to compare
-                let self_particle = &self.graph[self_idx];
-                let other_particle = &other.graph[other_idx];
-
                 // Check directional connections
-                if !self.check_direction_match(self_particle.left, other_particle.left)
-                    || !self.check_direction_match(self_particle.right, other_particle.right)
-                    || !self.check_direction_match(self_particle.down, other_particle.down)
-                    || !self.check_direction_match(self_particle.up, other_particle.up)
+                if !self.check_direction_match(sg_at_dir!(self, self_idx, L), sg_at_dir!(other, self_idx, L))
+                    || !self.check_direction_match(sg_at_dir!(self, self_idx, R), sg_at_dir!(other, self_idx, R))
+                    || !self.check_direction_match(sg_at_dir!(self, self_idx, D), sg_at_dir!(other, self_idx, D))
+                    || !self.check_direction_match(sg_at_dir!(self, self_idx, U), sg_at_dir!(other, self_idx, U))
                 {
                     return false;
                 }
 
                 // Add connected nodes to the queue
-                self.add_to_queue_if_connected(&mut queue, self_particle.left, other_particle.left);
-                self.add_to_queue_if_connected(&mut queue, self_particle.right, other_particle.right);
-                self.add_to_queue_if_connected(&mut queue, self_particle.down, other_particle.down);
-                self.add_to_queue_if_connected(&mut queue, self_particle.up, other_particle.up);
+                self.add_to_queue_if_connected(&mut queue, sg_at_dir!(self, self_idx, L), sg_at_dir!(other, self_idx, L));
+                self.add_to_queue_if_connected(&mut queue, sg_at_dir!(self, self_idx, R), sg_at_dir!(other, self_idx, R));
+                self.add_to_queue_if_connected(&mut queue, sg_at_dir!(self, self_idx, D), sg_at_dir!(other, self_idx, D));
+                self.add_to_queue_if_connected(&mut queue, sg_at_dir!(self, self_idx, U), sg_at_dir!(other, self_idx, U));
             }
 
             // Ensure all nodes were visited (graph is fully connected)
@@ -1406,7 +1402,7 @@ mod tests {
         }
 
         /// Helper to check if direction connections match in pattern
-        fn check_direction_match(&self, self_dir: Option<usize>, other_dir: Option<usize>) -> bool {
+        fn check_direction_match(&self, self_dir: Option<SpaceParticleView>, other_dir: Option<SpaceParticleView>) -> bool {
             // Both should either have a connection or not have a connection
             self_dir.is_some() == other_dir.is_some()
         }
@@ -1414,9 +1410,9 @@ mod tests {
         /// Helper to add connected nodes to the queue
         fn add_to_queue_if_connected(
             &self,
-            queue: &mut VecDeque<(usize, usize)>,
-            self_dir: Option<usize>,
-            other_dir: Option<usize>,
+            queue: &mut VecDeque<(SpaceParticleView, SpaceParticleView)>,
+            self_dir: Option<SpaceParticleView>,
+            other_dir: Option<SpaceParticleView>,
         ) {
             if let (Some(self_next), Some(other_next)) = (self_dir, other_dir) {
                 queue.push_back((self_next, other_next));
