@@ -143,6 +143,7 @@
                 // Create renderer
                 renderer = new THREE.WebGLRenderer({ antialias: true });
                 renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
                 const light = new THREE.AmbientLight(0xffffff, 1.0);
